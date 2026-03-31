@@ -30,6 +30,7 @@ const ui = {
   heroAvoid: document.getElementById("hero-avoid"),
   heroConfidence: document.getElementById("hero-confidence"),
   whyContent: document.getElementById("why-content"),
+  captainNote: document.getElementById("captain-note"),
   conditionsContent: document.getElementById("conditions-content"),
   zonesContent: document.getElementById("zones-content"),
   launchesContent: document.getElementById("launches-content"),
@@ -44,7 +45,7 @@ document.addEventListener("click", (event) => {
   }
 
   if (target.closest("#load-snapshot")) {
-    loadOrFetchSummary();
+    loadOrFetchSummary({ includeAi: false });
     return;
   }
 
@@ -64,8 +65,19 @@ document.addEventListener("click", (event) => {
     if (species && species !== state.favorites.species) {
       state.favorites.species = species;
       saveStored("saginaw:favorites", state.favorites);
-      loadOrFetchSummary();
+      if (state.data) {
+        loadOrFetchSummary({ includeAi: false });
+      } else {
+        hydrateTodayFromLocal();
+        render();
+      }
     }
+    return;
+  }
+
+  const aiNoteButton = target.closest("[data-action='generate-ai-note']");
+  if (aiNoteButton) {
+    loadOrFetchSummary({ includeAi: true });
     return;
   }
 
@@ -116,13 +128,14 @@ function init() {
   render();
 }
 
-async function loadOrFetchSummary() {
+async function loadOrFetchSummary(options = {}) {
+  const includeAi = Boolean(options.includeAi);
   const species = state.favorites.species || "walleye";
   const dayKey = getDateKeyInTimeZone(APP_TIMEZONE);
   const storageKey = snapshotStorageKey(species, dayKey);
 
   const localSnapshot = loadStored(storageKey, null);
-  if (isValidSnapshot(localSnapshot, dayKey)) {
+  if (isValidSnapshot(localSnapshot, dayKey) && (!includeAi || localSnapshot.captainNote?.text)) {
     state.data = localSnapshot;
     state.dataSource = "local";
     state.error = null;
@@ -140,6 +153,9 @@ async function loadOrFetchSummary() {
   const params = new URLSearchParams();
   params.set("species", species);
   params.set("day", dayKey);
+  if (includeAi) {
+    params.set("includeAi", "1");
+  }
 
   try {
     const response = await fetch(`${SUMMARY_ENDPOINT}?${params.toString()}`, {
@@ -252,6 +268,9 @@ function renderHero() {
     ui.heroAvoid.textContent = "-";
     ui.heroConfidence.textContent = "-";
     ui.whyContent.innerHTML = "<li>Load today's snapshot to view decision drivers.</li>";
+    if (ui.captainNote) {
+      ui.captainNote.textContent = "Optional and server-side only. Not generated until requested.";
+    }
     return;
   }
 
@@ -266,6 +285,16 @@ function renderHero() {
   ui.whyContent.innerHTML = reasons.length
     ? reasons.map((reason) => `<li>${escapeHtml(reason)}</li>`).join("")
     : "<li>No explanation available.</li>";
+
+  if (ui.captainNote) {
+    if (state.data.captainNote?.text) {
+      ui.captainNote.textContent = state.data.captainNote.text;
+    } else if (state.data.ai?.requested && state.data.ai?.generated === false) {
+      ui.captainNote.textContent = "AI note unavailable right now. Check OPENAI_API_KEY and try again.";
+    } else {
+      ui.captainNote.textContent = "Tap Generate Note for an optional AI captain summary.";
+    }
+  }
 }
 
 function renderConditions() {

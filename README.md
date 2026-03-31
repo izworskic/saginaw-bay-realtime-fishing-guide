@@ -14,6 +14,7 @@ Local-first decision dashboard for Saginaw Bay anglers.
 - Server-side private feed support (no token exposure)
 - Lazy fetch behavior: no API call until user loads snapshot
 - Daily snapshot lock: once generated, same snapshot is reused until next day
+- Optional OpenAI "Captain Note" generated only when user requests it
 
 ## Architecture
 
@@ -30,7 +31,7 @@ All external API secrets stay server-side only.
 ## API endpoints
 
 - `GET /api/health`
-- `GET /api/daily-summary?species=walleye|perch|mixed&day=YYYY-MM-DD`
+- `GET /api/daily-summary?species=walleye|perch|mixed&day=YYYY-MM-DD&includeAi=1`
 
 `/api/daily-summary` returns:
 
@@ -49,9 +50,13 @@ Create `.env.local` (or set in Vercel project settings):
 PRIVATE_FISH_API_URL=https://your-private-feed.example/api/reports
 PRIVATE_FISH_API_TOKEN=your-server-only-token
 PRIVATE_FISH_API_TIMEOUT_MS=9000
+OPENAI_API_KEY=your-server-only-openai-key
+OPENAI_MODEL=gpt-4o-mini
+OPENAI_TIMEOUT_MS=12000
 ```
 
 If `PRIVATE_FISH_API_URL` is not set, the app still runs using fallback fishing-intel seed data.
+If `OPENAI_API_KEY` is not set, the app still works and skips Captain Note generation.
 
 ## Run locally
 
@@ -77,3 +82,4 @@ Then open `http://localhost:3000`.
 - Safety override can force a no-go even when bite reports are positive.
 - Source health is included in API output to indicate thin/degraded data conditions.
 - Snapshot generation is intentionally frozen per day to avoid intra-day drift.
+- AI Captain Note follows the same daily lock once generated.

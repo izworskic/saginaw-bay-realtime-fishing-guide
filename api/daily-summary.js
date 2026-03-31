@@ -1,6 +1,7 @@
 const { SPECIES } = require("./_lib/constants");
 const { fetchFishingReports, fetchOfficialConditions, fetchWeatherAlerts } = require("./_lib/data-sources");
 const { buildDailySummary } = require("./_lib/scoring");
+const { maybeGenerateCaptainNote } = require("./_lib/ai-insights");
 
 const APP_TIMEZONE = "America/Detroit";
 const dailyCache = new Map();
@@ -13,6 +14,7 @@ module.exports = async function handler(req, res) {
   }
 
   const species = normalizeSpecies(req.query?.species);
+  const includeAi = String(req.query?.includeAi || "") === "1";
   const todayKey = getDateKeyInTimeZone(APP_TIMEZONE);
   const requestedDay = normalizeDayKey(req.query?.day);
   const snapshotDate = requestedDay === todayKey ? requestedDay : todayKey;
@@ -22,12 +24,15 @@ module.exports = async function handler(req, res) {
 
   const cached = dailyCache.get(cacheKey);
   if (cached) {
-    sendJson(res, 200, { ...cached.payload, cache: "daily-hit" }, "daily-hit");
+    const payload = await maybeAttachCaptainNote(cached.payload, includeAi);
+    cached.payload = payload;
+    sendJson(res, 200, { ...payload, cache: "daily-hit" }, "daily-hit");
     return;
   }
 
   if (inFlight.has(cacheKey)) {
-    const payload = await inFlight.get(cacheKey);
+    const inFlightPayload = await inFlight.get(cacheKey);
+    const payload = await maybeAttachCaptainNote(inFlightPayload, includeAi);
     sendJson(res, 200, { ...payload, cache: "daily-hit-inflight" }, "daily-hit-inflight");
     return;
   }
@@ -47,7 +52,12 @@ module.exports = async function handler(req, res) {
   inFlight.set(cacheKey, buildPromise);
 
   try {
-    const payload = await buildPromise;
+    const inFlightPayload = await buildPromise;
+    const payload = await maybeAttachCaptainNote(inFlightPayload, includeAi);
+    const cachedAfterBuild = dailyCache.get(cacheKey);
+    if (cachedAfterBuild) {
+      cachedAfterBuild.payload = payload;
+    }
     sendJson(res, 200, { ...payload, cache: "daily-miss" }, "daily-miss");
   } catch (error) {
     sendJson(
@@ -81,6 +91,39 @@ async function buildSnapshot(species, snapshotDate) {
   payload.snapshotDate = snapshotDate;
   payload.snapshotLocked = true;
   return payload;
+}
+
+async function maybeAttachCaptainNote(payload, includeAi) {
+  if (!includeAi) {
+    return payload;
+  }
+
+  if (payload.captainNote?.text) {
+    return payload;
+  }
+
+  const note = await maybeGenerateCaptainNote(payload);
+  if (!note?.text) {
+    return {
+      ...payload,
+      ai: {
+        available: Boolean(process.env.OPENAI_API_KEY),
+        requested: true,
+        generated: false,
+      },
+    };
+  }
+
+  return {
+    ...payload,
+    captainNote: note,
+    ai: {
+      available: true,
+      requested: true,
+      generated: true,
+      model: note.model,
+    },
+  };
 }
 
 function normalizeSpecies(input) {
