@@ -4,6 +4,7 @@ const { buildDailySummary } = require("./_lib/scoring");
 const { maybeGenerateCaptainNote } = require("./_lib/ai-insights");
 
 const APP_TIMEZONE = "America/Detroit";
+const API_VERSION = "2026-03-31-rich-zones-v2";
 const dailyCache = new Map();
 const inFlight = new Map();
 
@@ -92,7 +93,7 @@ async function buildSnapshot(species, snapshotDate) {
     ],
   });
 
-  payload.apiVersion = "2026-03-31";
+  payload.apiVersion = API_VERSION;
   payload.snapshotDate = snapshotDate;
   payload.snapshotLocked = true;
   return payload;

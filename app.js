@@ -1,6 +1,7 @@
 const SUMMARY_ENDPOINT = "/api/daily-summary";
 const APP_TIMEZONE = "America/Detroit";
 const SNAPSHOT_PREFIX = "saginaw:daily-snapshot";
+const REQUIRED_API_VERSION = "2026-03-31-rich-zones-v2";
 
 const state = {
   loading: false,
@@ -700,7 +701,12 @@ function snapshotStorageKey(species, dayKey) {
 }
 
 function isValidSnapshot(snapshot, expectedDayKey) {
-  return Boolean(snapshot && typeof snapshot === "object" && snapshot.snapshotDate === expectedDayKey);
+  return Boolean(
+    snapshot
+    && typeof snapshot === "object"
+    && snapshot.snapshotDate === expectedDayKey
+    && snapshot.apiVersion === REQUIRED_API_VERSION,
+  );
 }
 
 function pruneOldSnapshots(activeDayKey) {
