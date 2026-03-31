@@ -1,0 +1,38 @@
+{
+  "version": "2026-03-31-objective-v1",
+  "utilityFormula": "U_t(z)=G_t(z)*(0.45*S_t(z)+0.25*F_t(z)+0.15*R_t(z)+0.10*C_t(z)-0.05*X_t(z))",
+  "weights": {
+    "safety": 0.45,
+    "fishability": 0.25,
+    "recentSignal": 0.15,
+    "confidence": 0.1,
+    "friction": 0.05
+  },
+  "constraints": {
+    "minSafetyWeight": 0.4
+  },
+  "safetyGate": {
+    "windMph": 24,
+    "waveFt": 4.5,
+    "advisoryKeywords": ["small craft", "gale", "storm"],
+    "severityKeywords": ["extreme", "severe"]
+  },
+  "decisionThresholds": {
+    "goMinUtility": 70,
+    "goMinAvgSafety": 60,
+    "cautionMinUtility": 50
+  },
+  "normalization": {
+    "frictionMax": 40,
+    "frictionScaleTo100": true
+  },
+  "learningObjective": {
+    "formula": "J = HTDR - 5*SafetyMissRate - 0.5*CalibrationError",
+    "cadence": "weekly",
+    "targets": {
+      "htdrMin": 0.65,
+      "safetyMissRateMax": 0.02,
+      "calibrationErrorMax": 0.12
+    }
+  }
+}

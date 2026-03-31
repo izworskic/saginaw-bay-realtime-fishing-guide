@@ -1,11 +1,14 @@
 const { LAUNCHES, SPECIES, ZONES } = require("./constants");
 const { average, clamp, confidenceLabel, directionToCardinal, round, sourceWeight } = require("./helpers");
+const { MODEL_CONFIG, resolveActiveWeights } = require("./objective-model");
 
 function buildDailySummary({ conditions, alerts, reports, speciesKey, sourceStatuses }) {
   const species = SPECIES[speciesKey] || SPECIES.walleye;
+  const weights = resolveActiveWeights();
   const windCardinal = directionToCardinal(conditions.windDirectionDeg);
   const severeAlert = findSevereAlert(alerts);
   const alertPenalty = computeAlertPenalty(alerts);
+  const hardSafetyOverride = isHardSafetyOverride({ severeAlert, alerts, conditions });
 
   const zones = ZONES.map((zone) => scoreZone({
     zone,
@@ -14,6 +17,8 @@ function buildDailySummary({ conditions, alerts, reports, speciesKey, sourceStat
     reports,
     windCardinal,
     alertPenalty,
+    hardSafetyOverride,
+    weights,
   })).sort((a, b) => b.tripScore - a.tripScore);
 
   const topZone = zones[0];
@@ -22,6 +27,7 @@ function buildDailySummary({ conditions, alerts, reports, speciesKey, sourceStat
     topZone,
     zones,
     severeAlert,
+    hardSafetyOverride,
     conditions,
     alerts,
   });
@@ -32,7 +38,20 @@ function buildDailySummary({ conditions, alerts, reports, speciesKey, sourceStat
   return {
     generatedAt: new Date().toISOString(),
     species: species.key,
-    scoreModel: "trip = safety + fishability + recentSignal + confidence - friction",
+    scoreModel: MODEL_CONFIG.utilityFormula,
+    objective: {
+      version: MODEL_CONFIG.version,
+      weights: {
+        safety: round(weights.safety, 4),
+        fishability: round(weights.fishability, 4),
+        recentSignal: round(weights.recentSignal, 4),
+        confidence: round(weights.confidence, 4),
+        friction: round(weights.friction, 4),
+      },
+      constraints: MODEL_CONFIG.constraints,
+      decisionThresholds: MODEL_CONFIG.decisionThresholds,
+      learning: MODEL_CONFIG.learningObjective,
+    },
     bayCall,
     bestSetup: {
       id: topZone.id,
@@ -53,7 +72,7 @@ function buildDailySummary({ conditions, alerts, reports, speciesKey, sourceStat
   };
 }
 
-function scoreZone({ zone, species, conditions, reports, windCardinal, alertPenalty }) {
+function scoreZone({ zone, species, conditions, reports, windCardinal, alertPenalty, hardSafetyOverride, weights }) {
   const exposureFactor = zone.exposure[windCardinal] || 1;
   const windPenalty = Math.max(0, (conditions.windMph || 0) - 8) * 2.35 * exposureFactor;
   const wavePenalty = Math.max(0, (conditions.waveFt || 0) - 1) * 14.5 * exposureFactor;
@@ -69,23 +88,31 @@ function scoreZone({ zone, species, conditions, reports, windCardinal, alertPena
   const trendScore = scoreTemperatureTrend(conditions.waterTempTrendF, species);
   const fishability = clamp(round(tempScore * 0.42 + trendScore * 0.18 + recentSignal * 0.4), 0, 100);
   const confidence = computeConfidence({ conditions, reports: reportPool });
-  const friction = clamp(zone.friction + (zone.id === "outer-bay" && conditions.smallBoatWindowHours < 6 ? 6 : 0), 0, 40);
+  const frictionRaw = clamp(zone.friction + (zone.id === "outer-bay" && conditions.smallBoatWindowHours < 6 ? 6 : 0), 0, MODEL_CONFIG.normalization.frictionMax);
+  const friction = normalizeFriction(frictionRaw);
 
-  const tripRaw = safety * 0.34 + fishability * 0.29 + recentSignal * 0.22 + confidence * 0.15 - friction * 0.85;
-  const tripScore = clamp(round(tripRaw), 0, 100);
+  const gate = hardSafetyOverride ? 0 : 1;
+  const utilityRaw = gate * (
+    weights.safety * safety
+    + weights.fishability * fishability
+    + weights.recentSignal * recentSignal
+    + weights.confidence * confidence
+    - weights.friction * friction
+  );
+  const tripScore = clamp(round(utilityRaw), 0, 100);
 
   return {
     id: zone.id,
     name: zone.name,
-    recommendation: scoreRecommendation(tripScore, safety),
+    recommendation: scoreRecommendation({ tripScore, safety, gate }),
     tripScore,
     safety,
     fishability: round(fishability),
     recentSignal: round(recentSignal),
     confidence: round(confidence),
-    friction,
+    friction: round(friction),
+    gate,
     why: explainZone({
-      zone,
       safety,
       fishability,
       recentSignal,
@@ -94,6 +121,8 @@ function scoreZone({ zone, species, conditions, reports, windCardinal, alertPena
       exposureFactor,
       conditions,
       reportCount: zoneReports.length,
+      gate,
+      tripScore,
     }),
   };
 }
@@ -110,31 +139,32 @@ function scoreLaunches({ zones, windCardinal }) {
       zoneId: launch.zoneId,
       zoneName: zone?.name || launch.zoneId,
       score: round(launchScore),
-      advice: launchScore >= 70 ? "Solid option today" : launchScore >= 54 ? "Fishable with caution" : "Only if local and experienced",
+      advice: launchScore >= 70 ? "Solid option today" : launchScore >= 50 ? "Fishable with caution" : "Only if local and experienced",
       exposureSummary: exposed ? `${windCardinal} wind adds chop at this access.` : `${windCardinal} wind is less exposed here.`,
       notes: launch.notes,
     };
   }).sort((a, b) => b.score - a.score);
 }
 
-function computeBayCall({ topZone, zones, severeAlert, conditions, alerts }) {
+function computeBayCall({ topZone, zones, severeAlert, hardSafetyOverride, conditions, alerts }) {
+  const maxUtility = topZone?.tripScore || 0;
   const averageSafety = average(zones.map((zone) => zone.safety));
-  const hardSafetyOverride =
-    Boolean(severeAlert)
-    || (conditions.waveFt || 0) >= 4.5
-    || (conditions.windMph || 0) >= 24;
+  const thresholds = MODEL_CONFIG.decisionThresholds;
 
   let goNoGo;
   let label;
   if (hardSafetyOverride) {
     goNoGo = "NO_GO";
     label = "No-Go for Most Small Boats";
-  } else if ((topZone?.tripScore || 0) >= 72 && averageSafety >= 58) {
+  } else if (maxUtility >= thresholds.goMinUtility && averageSafety >= thresholds.goMinAvgSafety) {
     goNoGo = "GO";
     label = "Go with a Focused Plan";
-  } else {
+  } else if (maxUtility >= thresholds.cautionMinUtility) {
     goNoGo = "CAUTION";
     label = "Fishable with Caution";
+  } else {
+    goNoGo = "NO_GO";
+    label = "No-Go Based on Current Utility";
   }
 
   const confidenceScore = round(topZone?.confidence || 0);
@@ -149,7 +179,9 @@ function computeBayCall({ topZone, zones, severeAlert, conditions, alerts }) {
       topZone,
       conditions,
       averageSafety,
+      maxUtility,
       severeAlert,
+      hardSafetyOverride,
       alertCount: alerts.length,
     }),
   };
@@ -262,23 +294,30 @@ function scoreTemperatureTrend(trendF, species) {
   return clamp(65 - Math.abs(trendF) * 10, 26, 88);
 }
 
-function scoreRecommendation(tripScore, safety) {
+function scoreRecommendation({ tripScore, safety, gate }) {
+  const thresholds = MODEL_CONFIG.decisionThresholds;
+  if (gate === 0) {
+    return "No-go: safety override is active.";
+  }
   if (safety < 46) {
     return "Use caution: safety signal is weak.";
   }
-  if (tripScore >= 72) {
+  if (tripScore >= thresholds.goMinUtility) {
     return "Best setup right now.";
   }
-  if (tripScore >= 58) {
+  if (tripScore >= thresholds.cautionMinUtility) {
     return "Fishable if you stay within the better window.";
   }
   return "Marginal setup. Consider alternate zone or wait for a shift.";
 }
 
-function explainZone({ zone, safety, fishability, recentSignal, confidence, windCardinal, exposureFactor, conditions, reportCount }) {
+function explainZone({ safety, fishability, recentSignal, confidence, windCardinal, exposureFactor, conditions, reportCount, gate, tripScore }) {
   const reasons = [];
+  if (gate === 0) {
+    reasons.push("Safety gate forced utility to 0 for this zone.");
+  }
   reasons.push(`${windCardinal} wind creates ${exposureFactor >= 1.05 ? "higher" : "lower"} wave exposure here.`);
-  reasons.push(`Safety ${safety}, fishability ${round(fishability)}, report signal ${round(recentSignal)}.`);
+  reasons.push(`Utility ${tripScore}, safety ${safety}, fishability ${round(fishability)}, signal ${round(recentSignal)}.`);
   if (conditions.smallBoatWindowHours <= 4) {
     reasons.push("Short small-boat weather window reduces confidence.");
   } else {
@@ -289,18 +328,22 @@ function explainZone({ zone, safety, fishability, recentSignal, confidence, wind
   return reasons.slice(0, 4);
 }
 
-function buildBayRationale({ goNoGo, topZone, conditions, averageSafety, severeAlert, alertCount }) {
+function buildBayRationale({ goNoGo, topZone, conditions, averageSafety, maxUtility, severeAlert, hardSafetyOverride, alertCount }) {
   const reasons = [];
+  const thresholds = MODEL_CONFIG.decisionThresholds;
 
-  if (goNoGo === "NO_GO") {
-    reasons.push("Safety override triggered by advisory-level conditions.");
+  if (hardSafetyOverride) {
+    reasons.push("Hard safety gate triggered by advisories or high wind/waves.");
   } else if (goNoGo === "GO") {
-    reasons.push("Safety and fishability align in at least one local zone.");
+    reasons.push("Utility and safety thresholds are both met.");
+  } else if (goNoGo === "CAUTION") {
+    reasons.push("Utility is in caution range; keep plans conservative.");
   } else {
-    reasons.push("Signals are mixed; plan around smaller windows and protected water.");
+    reasons.push("Utility is below the caution threshold.");
   }
 
-  reasons.push(`${topZone?.name || "Top zone"} leads with a trip score of ${topZone?.tripScore ?? "-"}.`);
+  reasons.push(`${topZone?.name || "Top zone"} utility is ${maxUtility}.`);
+  reasons.push(`GO needs utility >= ${thresholds.goMinUtility} and avg safety >= ${thresholds.goMinAvgSafety}.`);
   reasons.push(`Average zone safety is ${round(averageSafety)}.`);
   reasons.push(`Current wind ${round(conditions.windMph || 0)} mph, waves ${round(conditions.waveFt || 0, 1)} ft.`);
   if (severeAlert) {
@@ -333,6 +376,14 @@ function signalSpread(values) {
   return max - min;
 }
 
+function normalizeFriction(value) {
+  if (!MODEL_CONFIG.normalization.frictionScaleTo100) {
+    return value;
+  }
+  const max = MODEL_CONFIG.normalization.frictionMax || 40;
+  return clamp((value / max) * 100, 0, 100);
+}
+
 function computeAlertPenalty(alerts) {
   if (!alerts.length) {
     return 0;
@@ -357,17 +408,32 @@ function computeAlertPenalty(alerts) {
 }
 
 function findSevereAlert(alerts) {
+  const gate = MODEL_CONFIG.safetyGate;
   return alerts.find((alert) => {
     const severity = String(alert.severity || "").toLowerCase();
     const event = String(alert.event || "").toLowerCase();
-    return (
-      event.includes("gale")
-      || event.includes("storm")
-      || event.includes("small craft")
-      || severity.includes("extreme")
-      || severity.includes("severe")
-    );
+    const keywordHit = gate.advisoryKeywords.some((keyword) => event.includes(keyword));
+    const severityHit = gate.severityKeywords.some((keyword) => severity.includes(keyword));
+    return keywordHit || severityHit;
   }) || null;
+}
+
+function isHardSafetyOverride({ severeAlert, alerts, conditions }) {
+  const gate = MODEL_CONFIG.safetyGate;
+  if (severeAlert) {
+    return true;
+  }
+  if ((conditions.windMph || 0) >= gate.windMph) {
+    return true;
+  }
+  if ((conditions.waveFt || 0) >= gate.waveFt) {
+    return true;
+  }
+
+  return alerts.some((alert) => {
+    const event = String(alert.event || "").toLowerCase();
+    return gate.advisoryKeywords.some((keyword) => event.includes(keyword));
+  });
 }
 
 function zoneName(zoneId) {

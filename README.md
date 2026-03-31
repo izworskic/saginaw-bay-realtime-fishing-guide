@@ -32,6 +32,7 @@ All external API secrets stay server-side only.
 
 - `GET /api/health`
 - `GET /api/daily-summary?species=walleye|perch|mixed&day=YYYY-MM-DD&includeAi=1`
+- `GET /api/objective-update?htdr=0.71&safetyMissRate=0.018&calibrationError=0.09`
 
 `/api/daily-summary` returns:
 
@@ -41,6 +42,7 @@ All external API secrets stay server-side only.
 - Launch recommendations
 - Report summary + source agreement
 - Source health status
+- Objective metadata (weights, constraints, and decision thresholds)
 
 ## Environment variables
 
@@ -53,10 +55,12 @@ PRIVATE_FISH_API_TIMEOUT_MS=9000
 OPENAI_API_KEY=your-server-only-openai-key
 OPENAI_MODEL=gpt-4o-mini
 OPENAI_TIMEOUT_MS=12000
+MODEL_WEIGHT_OVERRIDE_JSON={"safety":0.45,"fishability":0.25,"recentSignal":0.15,"confidence":0.10,"friction":0.05}
 ```
 
 If `PRIVATE_FISH_API_URL` is not set, the app still runs using fallback fishing-intel seed data.
 If `OPENAI_API_KEY` is not set, the app still works and skips Captain Note generation.
+If `MODEL_WEIGHT_OVERRIDE_JSON` is not set, default objective weights are used.
 
 ## Run locally
 
@@ -83,3 +87,9 @@ Then open `http://localhost:3000`.
 - Source health is included in API output to indicate thin/degraded data conditions.
 - Snapshot generation is intentionally frozen per day to avoid intra-day drift.
 - AI Captain Note follows the same daily lock once generated.
+- Objective function in production:
+  - `U_t(z)=G_t(z)*(0.45*S_t(z)+0.25*F_t(z)+0.15*R_t(z)+0.10*C_t(z)-0.05*X_t(z))`
+  - `G_t(z)=0` on hard safety override (advisory/wind/waves), else `1`
+  - `GO` if max utility >= 70 and avg safety >= 60
+  - `CAUTION` if utility in [50, 70)
+  - `NO_GO` otherwise
