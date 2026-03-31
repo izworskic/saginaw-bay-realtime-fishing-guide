@@ -307,9 +307,14 @@ function renderConditions() {
   const fields = [
     { label: "Wind", value: c.windMph != null ? `${Math.round(c.windMph)} mph ${c.windDirectionCardinal || ""}`.trim() : "-" },
     { label: "Waves", value: c.waveFt != null ? `${toFixed(c.waveFt, 1)} ft` : "-" },
+    { label: "NOAA Grid Wave", value: c.waveFtNoaaGrid != null ? `${toFixed(c.waveFtNoaaGrid, 1)} ft` : "-" },
     { label: "Air Temp", value: c.airTempF != null ? `${Math.round(c.airTempF)}°F` : "-" },
     { label: "Water Temp", value: c.waterTempF != null ? `${Math.round(c.waterTempF)}°F` : "-" },
     { label: "Small-Boat Window", value: c.smallBoatWindowHours != null ? `${c.smallBoatWindowHours} hrs` : "-" },
+    { label: "Window Label", value: c.smallBoatWindowLabel || "-" },
+    { label: "Water Level", value: c.waterLevelFtIGLD != null ? `${toFixed(c.waterLevelFtIGLD, 2)} ft IGLD` : "-" },
+    { label: "Water Trend (6h)", value: c.waterLevelTrend6hFt != null ? `${toFixed(c.waterLevelTrend6hFt, 2)} ft (${c.waterLevelTrendLabel || "trend"})` : "-" },
+    { label: "Shoreline Forecast", value: c.shorelineForecastShort || "-" },
     { label: "Advisories", value: c.alertHeadline || "None active" },
   ];
 
@@ -341,6 +346,7 @@ function renderZones() {
     .map((zone) => {
       const isFavorite = state.favorites.zones.includes(zone.id);
       const scoreTone = zoneScoreTone(zone.tripScore);
+      const action = zone.action || {};
       return `
       <article class="zone-card">
         <div class="zone-head">
@@ -359,8 +365,16 @@ function renderZones() {
           <div class="mini-item"><span class="k">Confidence</span><span class="v">${zone.confidence}</span></div>
         </div>
         <p><span class="score-pill ${scoreTone}">Score ${zone.tripScore}</span></p>
+        <div class="zone-action-block">
+          <p><strong>Best Launch:</strong> ${escapeHtml(action.bestLaunchName || "Not specified")}</p>
+          <p>${escapeHtml(action.launchReason || "")}</p>
+          <p><strong>Window:</strong> ${escapeHtml(action.windowPlan || "")}</p>
+          <p><strong>Tactic:</strong> ${escapeHtml(action.technique || "")}</p>
+          <p><strong>Caution:</strong> ${escapeHtml(action.caution || "Use standard caution.")}</p>
+          <p class="muted">${escapeHtml(action.sourceBlend || "")}</p>
+        </div>
         <ul class="list compact">
-          ${(zone.why || []).slice(0, 3).map((reason) => `<li>${escapeHtml(reason)}</li>`).join("")}
+          ${(zone.why || []).slice(0, 5).map((reason) => `<li>${escapeHtml(reason)}</li>`).join("")}
         </ul>
       </article>
     `;

@@ -4,6 +4,13 @@ const BAY_CENTER = Object.freeze({
   timezone: "America/Detroit",
 });
 
+const SHORELINE_POINT = Object.freeze({
+  lat: 43.594,
+  lon: -83.889,
+});
+
+const NOAA_WATER_LEVEL_STATION_DEFAULT = "9075035"; // Essexville (Saginaw system)
+
 const SPECIES = Object.freeze({
   walleye: Object.freeze({
     key: "walleye",
@@ -175,6 +182,8 @@ const FALLBACK_REPORTS = Object.freeze([
 
 module.exports = {
   BAY_CENTER,
+  SHORELINE_POINT,
+  NOAA_WATER_LEVEL_STATION_DEFAULT,
   SPECIES,
   ZONES,
   LAUNCHES,

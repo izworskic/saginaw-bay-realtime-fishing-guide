@@ -1,53 +1,95 @@
-const { BAY_CENTER, FALLBACK_REPORTS } = require("./constants");
-const { cToF, clamp, directionToCardinal, hoursSince, metersToFeet, normalizeZoneId } = require("./helpers");
+const {
+  BAY_CENTER,
+  FALLBACK_REPORTS,
+  NOAA_WATER_LEVEL_STATION_DEFAULT,
+  SHORELINE_POINT,
+} = require("./constants");
+const { cToF, clamp, directionToCardinal, hoursSince, metersToFeet, normalizeZoneId, round } = require("./helpers");
 
 const DEFAULT_TIMEOUT_MS = 9000;
+const NOAA_APP = "saginaw-bay-realtime-guide";
 
 async function fetchOfficialConditions() {
-  try {
-    const [weather, marine] = await Promise.all([fetchWeather(), fetchMarine()]);
-    const waveFt = Number.isFinite(marine.waveHeightRaw)
-      ? metersToFeet(marine.waveHeightRaw)
-      : null;
+  const [weatherResult, marineResult, gridResult, shorelineResult, waterLevelResult] = await Promise.all([
+    safeSourceCall(fetchWeather, "open-meteo-weather"),
+    safeSourceCall(fetchMarine, "open-meteo-marine"),
+    safeSourceCall(fetchNwsGridMarineContext, "nws-grid"),
+    safeSourceCall(fetchShorelineForecast, "nws-shoreline"),
+    safeSourceCall(fetchNoaaWaterLevel, "noaa-water-level"),
+  ]);
 
-    const waterTemp = normalizeWaterTemp(marine.waterTempRaw);
-    const waterTempTrendF = computeTrend(marine.hourlyWaterTempRaw, normalizeWaterTemp);
-    const windTrendMph = computeTrend(weather.hourlyWindMph, (x) => x);
+  const sourceStatuses = [
+    weatherResult.sourceStatus,
+    marineResult.sourceStatus,
+    gridResult.sourceStatus,
+    shorelineResult.sourceStatus,
+    waterLevelResult.sourceStatus,
+  ];
 
-    const smallBoatWindowHours = estimateSmallBoatWindowHours(
-      weather.hourlyWindMph,
-      marine.hourlyWaveHeightsRaw,
-    );
-
-    return {
-      conditions: {
-        windMph: weather.windMph,
-        windDirectionDeg: weather.windDirectionDeg,
-        windDirectionCardinal: directionToCardinal(weather.windDirectionDeg),
-        waveFt,
-        airTempF: weather.airTempF,
-        waterTempF: waterTemp,
-        waterTempTrendF,
-        windTrendMph,
-        smallBoatWindowHours,
-        fetchedAt: new Date().toISOString(),
-      },
-      sourceStatus: {
-        key: "official-conditions",
-        status: "ok",
-        details: "Open-Meteo weather and marine feeds loaded.",
-      },
-    };
-  } catch (error) {
+  if (!weatherResult.ok || !marineResult.ok) {
     return {
       conditions: fallbackConditions(),
       sourceStatus: {
         key: "official-conditions",
         status: "degraded",
-        details: `Using fallback conditions (${String(error.message || error)})`,
+        details: "Core weather/marine feeds unavailable; fallback conditions used.",
       },
+      additionalStatuses: sourceStatuses,
     };
   }
+
+  const weather = weatherResult.value;
+  const marine = marineResult.value;
+  const grid = gridResult.value;
+  const shoreline = shorelineResult.value;
+  const waterLevel = waterLevelResult.value;
+
+  const waveFtOpenMeteo = Number.isFinite(marine.waveHeightRaw) ? metersToFeet(marine.waveHeightRaw) : null;
+  const waveFt = blendNumbers([waveFtOpenMeteo, grid?.waveFt], 0.6);
+  const windMph = blendNumbers([weather.windMph, grid?.windMph], 0.75);
+
+  const waterTemp = normalizeWaterTemp(marine.waterTempRaw);
+  const waterTempTrendF = computeTrend(marine.hourlyWaterTempRaw, normalizeWaterTemp);
+  const windTrendMph = computeTrend(weather.hourlyWindMph, (x) => x);
+  const smallBoatWindowHours = estimateSmallBoatWindowHours(weather.hourlyWindMph, marine.hourlyWaveHeightsRaw);
+
+  return {
+    conditions: {
+      windMph,
+      windDirectionDeg: weather.windDirectionDeg,
+      windDirectionCardinal: directionToCardinal(weather.windDirectionDeg),
+      waveFt,
+      waveFtOpenMeteo,
+      waveFtNoaaGrid: grid?.waveFt ?? null,
+      windMphNoaaGrid: grid?.windMph ?? null,
+      noaaHazardSummary: grid?.hazardSummary || null,
+      skyCoverPctNoaa: grid?.skyCoverPct ?? null,
+      precipChancePctNoaa: grid?.precipChancePct ?? null,
+      airTempF: weather.airTempF,
+      waterTempF: waterTemp,
+      waterTempTrendF,
+      windTrendMph,
+      smallBoatWindowHours,
+      smallBoatWindowLabel: classifyBoatWindow(smallBoatWindowHours),
+      shorelineForecastShort: shoreline?.shortForecast || null,
+      shorelineForecastDetail: shoreline?.detailedForecast || null,
+      shorelineWindText: shoreline?.windText || null,
+      shorelinePrecipChancePct: shoreline?.precipChancePct ?? null,
+      waterLevelStationId: waterLevel?.stationId || null,
+      waterLevelStationName: waterLevel?.stationName || null,
+      waterLevelFtIGLD: waterLevel?.waterLevelFtIGLD ?? null,
+      waterLevelTrend6hFt: waterLevel?.waterLevelTrend6hFt ?? null,
+      waterLevelTrendLabel: waterLevel?.waterLevelTrendLabel || null,
+      waterLevelObservedAt: waterLevel?.observedAt || null,
+      fetchedAt: new Date().toISOString(),
+    },
+    sourceStatus: {
+      key: "official-conditions",
+      status: "ok",
+      details: "Open-Meteo core inputs plus NOAA/NWS enrichment loaded.",
+    },
+    additionalStatuses: sourceStatuses,
+  };
 }
 
 async function fetchWeatherAlerts() {
@@ -57,7 +99,7 @@ async function fetchWeatherAlerts() {
   try {
     const data = await fetchJson(url.toString(), {
       headers: {
-        "User-Agent": "SaginawBayFishingAggregator/1.0 (ops@saginawbay.local)",
+        "User-Agent": "SaginawBayRealtimeGuide/1.0 (ops@saginawbay.local)",
         Accept: "application/geo+json",
       },
       timeoutMs: 8000,
@@ -209,6 +251,128 @@ async function fetchMarine() {
   };
 }
 
+async function fetchNwsGridMarineContext() {
+  const headers = {
+    "User-Agent": "SaginawBayRealtimeGuide/1.0 (ops@saginawbay.local)",
+    Accept: "application/geo+json",
+  };
+
+  const pointUrl = `https://api.weather.gov/points/${BAY_CENTER.lat},${BAY_CENTER.lon}`;
+  const pointData = await fetchJson(pointUrl, { headers, timeoutMs: 9000 });
+  const gridUrl = pointData?.properties?.forecastGridData;
+  if (!gridUrl) {
+    throw new Error("NWS forecastGridData URL missing");
+  }
+
+  const grid = await fetchJson(gridUrl, { headers, timeoutMs: 9000 });
+  const props = grid.properties || {};
+
+  const windMph = parseNwsSeriesValue(props.windSpeed, convertNwsWindToMph);
+  const waveFt = parseNwsSeriesValue(props.waveHeight, convertNwsMetersToFeet);
+  const skyCoverPct = parseNwsSeriesValue(props.skyCover, (value) => value);
+  const precipChancePct = parseNwsSeriesValue(props.probabilityOfPrecipitation, (value) => value);
+  const hazardSummary = parseNwsHazards(props.hazards);
+
+  return {
+    windMph,
+    waveFt,
+    skyCoverPct: Number.isFinite(skyCoverPct) ? round(skyCoverPct) : null,
+    precipChancePct: Number.isFinite(precipChancePct) ? round(precipChancePct) : null,
+    hazardSummary,
+  };
+}
+
+async function fetchShorelineForecast() {
+  const headers = {
+    "User-Agent": "SaginawBayRealtimeGuide/1.0 (ops@saginawbay.local)",
+    Accept: "application/geo+json",
+  };
+  const pointUrl = `https://api.weather.gov/points/${SHORELINE_POINT.lat},${SHORELINE_POINT.lon}`;
+  const point = await fetchJson(pointUrl, { headers, timeoutMs: 9000 });
+  const forecastUrl = point?.properties?.forecast;
+  if (!forecastUrl) {
+    throw new Error("Shoreline forecast URL missing");
+  }
+
+  const forecast = await fetchJson(forecastUrl, { headers, timeoutMs: 9000 });
+  const period = forecast?.properties?.periods?.[0];
+  if (!period) {
+    throw new Error("No shoreline forecast periods");
+  }
+
+  return {
+    shortForecast: period.shortForecast || null,
+    detailedForecast: period.detailedForecast || null,
+    windText: period.windSpeed ? `${period.windDirection || ""} ${period.windSpeed}`.trim() : null,
+    windMph: parseWindTextToMph(period.windSpeed),
+    precipChancePct: Number.isFinite(period.probabilityOfPrecipitation?.value)
+      ? period.probabilityOfPrecipitation.value
+      : null,
+    periodName: period.name || null,
+  };
+}
+
+async function fetchNoaaWaterLevel() {
+  const stationId = process.env.NOAA_WATER_LEVEL_STATION || NOAA_WATER_LEVEL_STATION_DEFAULT;
+  const url = new URL("https://api.tidesandcurrents.noaa.gov/api/prod/datagetter");
+  url.searchParams.set("product", "water_level");
+  url.searchParams.set("application", NOAA_APP);
+  url.searchParams.set("datum", "IGLD");
+  url.searchParams.set("station", stationId);
+  url.searchParams.set("time_zone", "lst_ldt");
+  url.searchParams.set("units", "english");
+  url.searchParams.set("format", "json");
+  url.searchParams.set("date", "recent");
+
+  const payload = await fetchJson(url.toString(), { timeoutMs: 9000 });
+  const rows = Array.isArray(payload.data) ? payload.data : [];
+  const latest = rows.length ? rows[rows.length - 1] : null;
+  if (!latest) {
+    throw new Error("No NOAA water-level rows");
+  }
+
+  const latestValue = toNumber(latest.v);
+  const lookbackIndex = Math.max(0, rows.length - 1 - 36); // roughly 6h at 10-min intervals
+  const priorValue = toNumber(rows[lookbackIndex]?.v);
+  const trend6h = Number.isFinite(latestValue) && Number.isFinite(priorValue)
+    ? round(latestValue - priorValue, 3)
+    : null;
+
+  return {
+    stationId,
+    stationName: payload.metadata?.name || "NOAA station",
+    observedAt: toIsoOrNow(latest.t),
+    waterLevelFtIGLD: latestValue,
+    waterLevelTrend6hFt: trend6h,
+    waterLevelTrendLabel: classifyWaterLevelTrend(trend6h),
+  };
+}
+
+async function safeSourceCall(fn, key) {
+  try {
+    const value = await fn();
+    return {
+      ok: true,
+      value,
+      sourceStatus: {
+        key,
+        status: "ok",
+        details: "Loaded",
+      },
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      value: null,
+      sourceStatus: {
+        key,
+        status: "degraded",
+        details: String(error.message || error),
+      },
+    };
+  }
+}
+
 function normalizeReport(raw, index) {
   if (!raw || typeof raw !== "object") {
     return null;
@@ -270,11 +434,28 @@ function fallbackConditions() {
     windDirectionDeg: 240,
     windDirectionCardinal: "SW",
     waveFt: 2.1,
+    waveFtOpenMeteo: 2.1,
+    waveFtNoaaGrid: null,
+    windMphNoaaGrid: null,
+    noaaHazardSummary: null,
+    skyCoverPctNoaa: null,
+    precipChancePctNoaa: null,
     airTempF: 59,
     waterTempF: 54,
     waterTempTrendF: 0.8,
     windTrendMph: 0.3,
     smallBoatWindowHours: 6,
+    smallBoatWindowLabel: "Moderate Window",
+    shorelineForecastShort: null,
+    shorelineForecastDetail: null,
+    shorelineWindText: null,
+    shorelinePrecipChancePct: null,
+    waterLevelStationId: null,
+    waterLevelStationName: null,
+    waterLevelFtIGLD: null,
+    waterLevelTrend6hFt: null,
+    waterLevelTrendLabel: null,
+    waterLevelObservedAt: null,
     fetchedAt: new Date().toISOString(),
   };
 }
@@ -290,6 +471,35 @@ function estimateSmallBoatWindowHours(hourlyWindMph, hourlyWaveHeightsRaw) {
     }
   }
   return count;
+}
+
+function classifyBoatWindow(hours) {
+  if (!Number.isFinite(hours)) {
+    return "Unknown";
+  }
+  if (hours >= 10) {
+    return "Long Window";
+  }
+  if (hours >= 6) {
+    return "Moderate Window";
+  }
+  if (hours >= 3) {
+    return "Short Window";
+  }
+  return "Very Short Window";
+}
+
+function classifyWaterLevelTrend(trend6h) {
+  if (!Number.isFinite(trend6h)) {
+    return null;
+  }
+  if (trend6h >= 0.15) {
+    return "Rising";
+  }
+  if (trend6h <= -0.15) {
+    return "Falling";
+  }
+  return "Stable";
 }
 
 function computeTrend(values, transform) {
@@ -314,15 +524,97 @@ function normalizeWaterTemp(value) {
   return cToF(value);
 }
 
+function parseNwsSeriesValue(series, converter) {
+  const values = Array.isArray(series?.values) ? series.values : [];
+  for (const entry of values) {
+    const raw = toNumber(entry?.value);
+    if (!Number.isFinite(raw)) {
+      continue;
+    }
+    const converted = converter(raw, series?.uom);
+    if (Number.isFinite(converted)) {
+      return round(converted, 2);
+    }
+  }
+  return null;
+}
+
+function parseNwsHazards(series) {
+  const values = Array.isArray(series?.values) ? series.values : [];
+  const firstActive = values.find((entry) => Array.isArray(entry?.value) && entry.value.length);
+  if (!firstActive) {
+    return null;
+  }
+
+  const tags = firstActive.value
+    .map((item) => {
+      if (!item) {
+        return null;
+      }
+      if (typeof item === "string") {
+        return item;
+      }
+      if (item.phenomenon && item.significance) {
+        return `${item.phenomenon}.${item.significance}`;
+      }
+      return null;
+    })
+    .filter(Boolean);
+
+  return tags.length ? `NWS grid hazards: ${tags.join(", ")}` : null;
+}
+
+function parseWindTextToMph(text) {
+  const value = String(text || "");
+  const matches = [...value.matchAll(/(\d+(?:\.\d+)?)/g)].map((entry) => Number(entry[1]));
+  if (!matches.length) {
+    return null;
+  }
+  return round(matches.reduce((sum, n) => sum + n, 0) / matches.length, 1);
+}
+
+function convertNwsWindToMph(value, uom) {
+  if (String(uom || "").toLowerCase().includes("km_h")) {
+    return value * 0.621371;
+  }
+  if (String(uom || "").toLowerCase().includes("m_s")) {
+    return value * 2.23694;
+  }
+  return value;
+}
+
+function convertNwsMetersToFeet(value, uom) {
+  if (String(uom || "").toLowerCase().includes("m")) {
+    return metersToFeet(value);
+  }
+  return value;
+}
+
+function blendNumbers(values, primaryWeight = 0.7) {
+  const valid = values.filter((value) => Number.isFinite(value));
+  if (!valid.length) {
+    return null;
+  }
+  if (valid.length === 1) {
+    return round(valid[0], 2);
+  }
+
+  const [first, second] = valid;
+  const p = clamp(primaryWeight, 0.5, 0.95);
+  return round(first * p + second * (1 - p), 2);
+}
+
 async function fetchJson(url, options = {}) {
   const timeoutMs = Number(options.timeoutMs || DEFAULT_TIMEOUT_MS);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const fetchOptions = { ...options };
+  delete fetchOptions.timeoutMs;
 
   try {
     const response = await fetch(url, {
       method: "GET",
-      ...options,
+      ...fetchOptions,
       signal: controller.signal,
     });
 

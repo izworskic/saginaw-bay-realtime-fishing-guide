@@ -22,7 +22,9 @@ Local-first decision dashboard for Saginaw Bay anglers.
 - Backend: Vercel serverless functions in `/api`
 - Data sources:
   - Open-Meteo weather + marine conditions
-  - NWS active alerts
+  - NOAA/NWS active alerts + NWS forecast grid marine fields
+  - NOAA CO-OPS water-level station data (default Essexville, station `9075035`)
+  - NWS shoreline forecast narrative near Bay City
   - Optional private fishing API via env vars
   - Built-in fallback report seed when private feed is unavailable
 
@@ -56,6 +58,7 @@ OPENAI_API_KEY=your-server-only-openai-key
 OPENAI_MODEL=gpt-4o-mini
 OPENAI_TIMEOUT_MS=12000
 MODEL_WEIGHT_OVERRIDE_JSON={"safety":0.45,"fishability":0.25,"recentSignal":0.15,"confidence":0.10,"friction":0.05}
+NOAA_WATER_LEVEL_STATION=9075035
 ```
 
 If `PRIVATE_FISH_API_URL` is not set, the app still runs using fallback fishing-intel seed data.

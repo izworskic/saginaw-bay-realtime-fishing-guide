@@ -64,6 +64,14 @@ function buildDailySummary({ conditions, alerts, reports, speciesKey, sourceStat
       windDirectionCardinal: windCardinal,
       alertHeadline: severeAlert ? severeAlert.event : alerts.length ? "Active alerts in area" : "No active alerts",
     },
+    highlights: {
+      noaaHazardSummary: conditions.noaaHazardSummary || null,
+      shorelineForecastShort: conditions.shorelineForecastShort || null,
+      waterLevel: conditions.waterLevelFtIGLD != null
+        ? `${round(conditions.waterLevelFtIGLD, 2)} ft IGLD (${conditions.waterLevelTrendLabel || "trend unknown"})`
+        : null,
+      smallBoatWindowLabel: conditions.smallBoatWindowLabel || null,
+    },
     alerts: alerts.slice(0, 6),
     zones,
     launches,
@@ -100,6 +108,18 @@ function scoreZone({ zone, species, conditions, reports, windCardinal, alertPena
     - weights.friction * friction
   );
   const tripScore = clamp(round(utilityRaw), 0, 100);
+  const action = buildZoneAction({
+    zone,
+    species,
+    conditions,
+    tripScore,
+    safety,
+    fishability,
+    recentSignal,
+    windCardinal,
+    exposureFactor,
+    reportCount: zoneReports.length,
+  });
 
   return {
     id: zone.id,
@@ -112,6 +132,7 @@ function scoreZone({ zone, species, conditions, reports, windCardinal, alertPena
     confidence: round(confidence),
     friction: round(friction),
     gate,
+    action,
     why: explainZone({
       safety,
       fishability,
@@ -311,6 +332,91 @@ function scoreRecommendation({ tripScore, safety, gate }) {
   return "Marginal setup. Consider alternate zone or wait for a shift.";
 }
 
+function buildZoneAction({ zone, species, conditions, tripScore, safety, fishability, recentSignal, windCardinal, exposureFactor, reportCount }) {
+  const launches = LAUNCHES.filter((launch) => launch.zoneId === zone.id);
+  const bestLaunch = selectBestLaunch(launches, windCardinal);
+  const boatWindow = conditions.smallBoatWindowHours || 0;
+  const skyCover = conditions.skyCoverPctNoaa;
+  const precip = conditions.shorelinePrecipChancePct ?? conditions.precipChancePctNoaa;
+
+  const windowPlan = boatWindow >= 10
+    ? "Run early and late; midday still manageable."
+    : boatWindow >= 6
+      ? "Prioritize first half of the day before exposure builds."
+      : boatWindow >= 3
+        ? "Short protected run only. Tight timing matters."
+        : "Window is very limited; keep an abort route."
+
+  const technique = buildTechniqueHint({
+    speciesKey: species.key,
+    zoneId: zone.id,
+    recentSignal,
+    waterTempF: conditions.waterTempF,
+  });
+
+  const caution = [
+    exposureFactor >= 1.1 ? `${windCardinal} wind amplifies chop in this zone.` : `${windCardinal} wind exposure is relatively lower here.`,
+    conditions.noaaHazardSummary ? conditions.noaaHazardSummary : null,
+    Number.isFinite(precip) && precip >= 55 ? `Showers/storm chance near ${round(precip)}%.` : null,
+  ].filter(Boolean).join(" ");
+
+  const sourceBlend = reportCount
+    ? `${reportCount} zone-specific reports + official conditions support this call.`
+    : "Official conditions are leading due to thin direct reports.";
+
+  return {
+    bestLaunchId: bestLaunch?.id || null,
+    bestLaunchName: bestLaunch?.name || null,
+    launchReason: bestLaunch
+      ? (bestLaunch.exposedTo.includes(windCardinal)
+        ? `${bestLaunch.name}: usable, but watch ${windCardinal} exposure at the ramp.`
+        : `${bestLaunch.name}: better shielded for ${windCardinal} wind.`)
+      : "No mapped launch recommendation for this zone.",
+    windowPlan,
+    technique,
+    caution,
+    sourceBlend,
+    snapshot: `Trip ${tripScore} | Safety ${safety} | Fishability ${round(fishability)} | Signal ${round(recentSignal)}${Number.isFinite(skyCover) ? ` | Sky ${round(skyCover)}%` : ""}`,
+  };
+}
+
+function selectBestLaunch(launches, windCardinal) {
+  if (!launches.length) {
+    return null;
+  }
+  return launches
+    .slice()
+    .sort((a, b) => {
+      const aExposed = a.exposedTo.includes(windCardinal) ? 1 : 0;
+      const bExposed = b.exposedTo.includes(windCardinal) ? 1 : 0;
+      return aExposed - bExposed;
+    })[0];
+}
+
+function buildTechniqueHint({ speciesKey, zoneId, recentSignal, waterTempF }) {
+  const warm = Number.isFinite(waterTempF) && waterTempF >= 55;
+  const active = recentSignal >= 58;
+
+  if (speciesKey === "walleye") {
+    if (zoneId === "river-mouth" || zoneId === "inner-bay") {
+      return active
+        ? "Start with controlled passes along transition edges; adjust speed before changing color."
+        : "Work slower transition edges and tighten turns near plume boundaries.";
+    }
+    return warm
+      ? "Cover water first, then repeat productive breaks."
+      : "Use slower presentations on structure-facing edges before roaming.";
+  }
+
+  if (speciesKey === "perch") {
+    return active
+      ? "Stay put longer on active pods and downsize only if marks thin."
+      : "Use patient bottom-oriented drifts and relocate quickly when marks fade.";
+  }
+
+  return "Begin with conservative passes in protected sections, then expand only after stable boat control.";
+}
+
 function explainZone({ safety, fishability, recentSignal, confidence, windCardinal, exposureFactor, conditions, reportCount, gate, tripScore }) {
   const reasons = [];
   if (gate === 0) {
@@ -318,6 +424,9 @@ function explainZone({ safety, fishability, recentSignal, confidence, windCardin
   }
   reasons.push(`${windCardinal} wind creates ${exposureFactor >= 1.05 ? "higher" : "lower"} wave exposure here.`);
   reasons.push(`Utility ${tripScore}, safety ${safety}, fishability ${round(fishability)}, signal ${round(recentSignal)}.`);
+  if (Number.isFinite(conditions.waveFtNoaaGrid)) {
+    reasons.push(`NOAA grid wave guidance near ${round(conditions.waveFtNoaaGrid, 1)} ft.`);
+  }
   if (conditions.smallBoatWindowHours <= 4) {
     reasons.push("Short small-boat weather window reduces confidence.");
   } else {

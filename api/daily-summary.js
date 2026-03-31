@@ -84,7 +84,12 @@ async function buildSnapshot(species, snapshotDate) {
     alerts: alertResult.alerts,
     reports: fishing.reports,
     speciesKey: species,
-    sourceStatuses: [official.sourceStatus, alertResult.sourceStatus, fishing.sourceStatus],
+    sourceStatuses: [
+      official.sourceStatus,
+      ...(Array.isArray(official.additionalStatuses) ? official.additionalStatuses : []),
+      alertResult.sourceStatus,
+      fishing.sourceStatus,
+    ],
   });
 
   payload.apiVersion = "2026-03-31";
