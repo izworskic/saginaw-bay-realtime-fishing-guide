@@ -7,7 +7,7 @@ module.exports = async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store, max-age=0");
   res.status(200).json({
     ok: true,
-    service: "saginaw-bay-fishing-aggregator",
+    service: "saginaw-bay-realtime-fishing-guide",
     timestamp: new Date().toISOString(),
   });
 };

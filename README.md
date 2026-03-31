@@ -1,4 +1,4 @@
-# Saginaw Bay Fishing Aggregator (MVP)
+# Saginaw Bay Realtime Fishing Guide (MVP)
 
 Local-first decision dashboard for Saginaw Bay anglers.
 
