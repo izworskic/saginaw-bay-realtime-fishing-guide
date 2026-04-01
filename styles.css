@@ -173,7 +173,7 @@ p { margin: 0; }
 
 .bay-map {
   width: 100%;
-  height: 420px;
+  height: 520px;
   background: var(--navy);
 }
 
@@ -585,74 +585,137 @@ p { margin: 0; }
   .nav-links { gap: 0; overflow-x: auto; }
   .nav-link { padding: 0.35rem 0.45rem; font-size: 0.72rem; }
   .hero-metrics { grid-template-columns: 1fr; }
-  .bay-map { height: 300px; }
+  .bay-map { height: 380px; }
   .conditions-grid { grid-template-columns: repeat(2, 1fr); }
   .zones-grid { grid-template-columns: 1fr; }
   .zone-stats { grid-template-columns: repeat(2, 1fr); }
   .content-wrap { padding: 1rem 0.75rem 2rem; }
 }
 
-/* ---- SENSOR MAP MARKERS ---- */
-.sensor-marker, .forecast-icon, .launch-icon { background: transparent !important; border: none !important; }
+/* ---- MAP MARKERS: rich data-label system ---- */
+.map-marker { background: transparent !important; border: none !important; }
 
-.sm-pin {
-  width: 30px; height: 30px;
-  border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  color: #fff;
-  font-family: var(--ff-ui);
-  font-weight: 700;
-  font-size: 0.72rem;
-  border: 2px solid #fff;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+/* Wind station: arrow + speed + direction */
+.m-wind {
+  display: flex; align-items: center; gap: 3px;
+  background: rgba(255,255,255,0.92); border: 2px solid var(--c, #3d7a9c);
+  border-radius: 6px; padding: 2px 6px 2px 3px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2); white-space: nowrap;
+}
+.m-wind svg { flex-shrink: 0; }
+.m-wind .m-val { font-family: var(--ff-ui); font-weight: 800; font-size: 0.85rem; color: var(--c); }
+.m-wind .m-unit { font-family: var(--ff-ui); font-weight: 600; font-size: 0.6rem; color: var(--ink-soft); }
+
+/* Water temp drop */
+.m-water {
+  display: flex; align-items: center; gap: 2px;
+  background: rgba(255,255,255,0.92); border: 2px solid var(--c, #3d7a9c);
+  border-radius: 6px; padding: 2px 5px 2px 2px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2); margin-top: 2px;
+}
+.m-water .m-val { font-family: var(--ff-ui); font-weight: 800; font-size: 0.8rem; color: var(--c); }
+
+/* Stream gauge */
+.m-gauge {
+  display: flex; align-items: center; gap: 3px;
+  background: rgba(255,255,255,0.92); border: 2px solid #3d7a9c;
+  border-radius: 6px; padding: 2px 6px 2px 3px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+.m-gauge .m-val { font-family: var(--ff-ui); font-weight: 800; font-size: 0.82rem; color: #3d7a9c; }
+.m-gauge .m-sub { font-family: var(--ff-ui); font-weight: 600; font-size: 0.65rem; color: var(--ink-soft); }
+
+/* Water level */
+.m-level {
+  display: flex; align-items: center; gap: 3px;
+  background: rgba(255,255,255,0.92); border: 2px solid #5a6b78;
+  border-radius: 6px; padding: 2px 6px 2px 3px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+.m-level .m-val { font-family: var(--ff-ui); font-weight: 700; font-size: 0.72rem; color: var(--ink); }
+
+/* Launch marker */
+.m-launch {
+  position: relative; display: flex; flex-direction: column; align-items: center;
+}
+.m-launch svg { filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3)); }
+.m-launch .m-score {
+  font-family: var(--ff-ui); font-weight: 800; font-size: 0.65rem;
+  color: #fff; background: var(--c); border-radius: 999px;
+  padding: 0 4px; position: absolute; bottom: -4px; right: -6px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3); min-width: 16px; text-align: center;
 }
 
-.fc-pin {
-  width: 26px; height: 26px;
-  border-radius: 4px;
-  display: flex; align-items: center; justify-content: center;
-  color: #fff;
-  font-family: var(--ff-ui);
-  font-weight: 700;
-  font-size: 0.6rem;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.25);
-}
-.fc-pin.inner { background: var(--navy-mid); }
-.fc-pin.outer { background: var(--navy); }
-.fc-pin.sat { background: #8b5cf6; }
-.fc-pin.fc-alert { background: var(--nogo); animation: pulse-alert 1.5s infinite; }
-@keyframes pulse-alert { 0%,100%{opacity:1} 50%{opacity:0.7} }
+/* Fish/structure marker */
+.m-fish { filter: drop-shadow(0 1px 3px rgba(0,0,0,0.2)); }
+.m-fish svg { opacity: 0.85; }
 
-.launch-pin {
-  color: var(--navy);
-  font-size: 1rem;
-  text-align: center;
-  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.3));
+/* Marine forecast label */
+.m-fc span {
+  font-family: var(--ff-ui); font-weight: 700; font-size: 0.62rem;
+  letter-spacing: 0.06em; color: #fff; padding: 3px 8px;
+  border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.25);
 }
+.m-alert span { animation: pulse-alert 1.2s infinite; }
+@keyframes pulse-alert { 0%,100%{opacity:1} 50%{opacity:0.6} }
 
-/* ---- SENSOR POPUPS ---- */
-.sensor-popup-inner {
-  font-family: var(--ff-ui);
-  font-size: 0.82rem;
-  line-height: 1.5;
-  color: var(--ink);
+/* Report hotspot */
+.m-report {
+  display: flex; align-items: center; gap: 4px;
+  background: rgba(255,255,255,0.95); border: 2px solid var(--c);
+  border-radius: 20px; padding: 2px 8px 2px 4px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.18);
 }
-.sensor-popup-inner strong { color: var(--ink); }
-.sensor-popup-inner a { color: var(--water); }
+.m-rcount {
+  font-family: var(--ff-ui); font-weight: 800; font-size: 0.82rem;
+  color: #fff; background: var(--c); border-radius: 50%;
+  width: 20px; height: 20px; display: flex; align-items: center; justify-content: center;
+}
+.m-rlabel { font-family: var(--ff-ui); font-weight: 700; font-size: 0.68rem; color: var(--c); text-transform: uppercase; letter-spacing: 0.04em; }
 
-.leaflet-popup-content-wrapper {
-  border-radius: 8px !important;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.15) !important;
+/* ---- MAP CONDITIONS OVERLAY ---- */
+.map-overlay {
+  position: absolute; top: 10px; left: 10px; z-index: 800;
+  display: flex; flex-direction: column; gap: 2px;
+  background: rgba(26, 46, 59, 0.92); backdrop-filter: blur(8px);
+  border-radius: 8px; padding: 8px 10px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+  max-width: 220px;
 }
+.ov-item {
+  display: flex; justify-content: space-between; gap: 8px;
+  font-family: var(--ff-ui); font-size: 0.7rem; color: rgba(245,240,232,0.7);
+}
+.ov-item .ov-k { font-weight: 500; }
+.ov-item .ov-v { font-weight: 700; color: rgba(245,240,232,0.95); text-align: right; }
+.ov-alert .ov-v { color: #f87171; }
 
-/* Zone tooltip */
-.zone-tooltip {
-  font-family: var(--ff-ui) !important;
-  font-size: 0.78rem !important;
-  font-weight: 600 !important;
-  border-radius: 6px !important;
-  padding: 4px 8px !important;
+/* ---- POPUP STYLES ---- */
+.pop { font-family: var(--ff-ui); font-size: 0.82rem; line-height: 1.5; color: var(--ink); }
+.pop strong { color: var(--ink); }
+.pop a { color: var(--water); }
+.pop-table { border-collapse: collapse; margin: 6px 0; width: 100%; }
+.pop-table td { padding: 2px 6px 2px 0; font-size: 0.8rem; }
+.pop-table td:first-child { color: var(--ink-soft); font-weight: 500; white-space: nowrap; width: 1%; }
+.pop-table td:last-child { font-weight: 600; }
+.pop-alert { background: rgba(184,64,64,0.12); color: #b84040; font-weight: 700; font-size: 0.78rem; padding: 4px 6px; border-radius: 4px; margin: 6px 0; }
+.pop-report-item { border-top: 1px solid var(--card-border); padding-top: 6px; margin-top: 6px; }
+.pop-report-item p { font-size: 0.78rem; }
+.pop-report-item small { display: block; font-size: 0.68rem; color: var(--ink-soft); }
+.pop-src { opacity: 0.6; }
+
+.leaflet-popup-content-wrapper { border-radius: 8px !important; box-shadow: 0 4px 16px rgba(0,0,0,0.15) !important; }
+
+/* ---- TOOLTIPS ---- */
+.tip-structure, .tip-launch {
+  font-family: var(--ff-ui) !important; font-weight: 600 !important;
+  border-radius: 6px !important; padding: 3px 8px !important; font-size: 0.75rem !important;
 }
+.tip-structure { background: rgba(90,107,120,0.92) !important; color: #fff !important; border: none !important; }
+.tip-launch { background: rgba(26,46,59,0.92) !important; color: #fff !important; border: none !important; }
+.tip-structure::before, .tip-launch::before { border-top-color: rgba(26,46,59,0.92) !important; }
+
+.lg-icon { font-size: 0.8rem; }
 
 /* ---- REPORT SOURCE BADGES ---- */
 .source-badges {
