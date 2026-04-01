@@ -518,6 +518,9 @@ function cleanSummary(text) {
   for (const re of prefixes) {
     result = result.replace(re, "");
   }
+  // Strip trailing booking/call-to-action junk
+  result = result.replace(/\s*(?:Give me a call|I have (?:Friday|Saturday|Sunday|Monday|Tuesday|Wednesday|Thursday|availability|dates))[\s\S]*$/i, "");
+  result = result.replace(/\s*(?:Dates are still available|They are all available)[\s\S]*$/i, "");
   return result.trim();
 }
 
@@ -535,11 +538,11 @@ function isBoilerplate(text) {
     "snowmobile trail", "business registration", "forum registration",
     "tow boatu.s.", "boatus.com", "membership", "Loading Fish Calendar",
     "don't miss what's biting", "check out the latest catches",
-    "see recent", "finding the best local", "finding the best charter",
+    "finding the best local", "finding the best charter",
     "cancel free of charge", "remaining balance",
     "legitimacy: verification", "technicality: verification",
     "we check thousands of charter", "book with fishingbooker",
-    "give me a call at", "book a trip",
+    "load more reports", "fishing calendar",
   ];
   return junk.some(j => lower.includes(j));
 }
