@@ -6,7 +6,8 @@
       "source": "/api/(.*)",
       "headers": [
         { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        { "key": "Cache-Control", "value": "s-maxage=300, stale-while-revalidate=600" }
       ]
     },
     {
@@ -16,15 +17,20 @@
         { "key": "X-Content-Type-Options", "value": "nosniff" },
         { "key": "X-Frame-Options", "value": "SAMEORIGIN" },
         { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
-        { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=()" },
-        { "key": "X-Permitted-Cross-Domain-Policies", "value": "none" },
-        { "key": "Cross-Origin-Opener-Policy", "value": "same-origin" },
-        { "key": "Cross-Origin-Resource-Policy", "value": "same-origin" },
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'; form-action 'self'; upgrade-insecure-requests"
+          "value": "default-src 'self'; script-src 'self' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; img-src 'self' data: https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org https:; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' https://*.basemaps.cartocdn.com; object-src 'none'; base-uri 'self'; frame-ancestors 'self'; form-action 'self'; upgrade-insecure-requests"
         }
       ]
     }
+  ],
+  "rewrites": [
+    { "source": "/walleye", "destination": "/pages/walleye.html" },
+    { "source": "/perch", "destination": "/pages/perch.html" },
+    { "source": "/zones", "destination": "/pages/zones.html" },
+    { "source": "/zones/:id", "destination": "/pages/zone-detail.html" },
+    { "source": "/launches", "destination": "/pages/launches.html" },
+    { "source": "/launches/:id", "destination": "/pages/launch-detail.html" },
+    { "source": "/forecast", "destination": "/pages/forecast.html" }
   ]
 }

@@ -1,8 +1,80 @@
+/* ============================================
+   Saginaw Bay Fishing Hub - app.js
+   Auto-loading, map-first architecture
+   ============================================ */
+
 const SUMMARY_ENDPOINT = "/api/daily-summary";
 const APP_TIMEZONE = "America/Detroit";
 const SNAPSHOT_PREFIX = "saginaw:daily-snapshot";
 const REQUIRED_API_VERSION = "2026-03-31-rich-zones-v2";
 
+/* ---- Zone polygons (approximate Saginaw Bay regions) ---- */
+const ZONE_GEO = {
+  "west-side": {
+    color: "#5a9ab8",
+    coords: [
+      [43.62, -83.91], [43.72, -83.92], [43.82, -83.87],
+      [43.93, -83.80], [44.02, -83.73], [44.02, -83.78],
+      [43.93, -83.85], [43.82, -83.92], [43.72, -83.96], [43.62, -83.96]
+    ]
+  },
+  "east-side": {
+    color: "#5a9ab8",
+    coords: [
+      [43.60, -83.62], [43.67, -83.50], [43.77, -83.43],
+      [43.88, -83.45], [43.88, -83.55], [43.77, -83.55],
+      [43.67, -83.60], [43.60, -83.66]
+    ]
+  },
+  "inner-bay": {
+    color: "#5a9ab8",
+    coords: [
+      [43.60, -83.88], [43.60, -83.68], [43.68, -83.66],
+      [43.73, -83.72], [43.73, -83.82], [43.68, -83.88]
+    ]
+  },
+  "outer-bay": {
+    color: "#5a9ab8",
+    coords: [
+      [43.90, -83.76], [43.90, -83.55], [44.00, -83.47],
+      [44.08, -83.52], [44.08, -83.72], [44.00, -83.78]
+    ]
+  },
+  "river-mouth": {
+    color: "#5a9ab8",
+    coords: [
+      [43.57, -83.92], [43.57, -83.86], [43.62, -83.84],
+      [43.62, -83.88], [43.60, -83.92]
+    ]
+  },
+  "shipping-channel": {
+    color: "#5a9ab8",
+    coords: [
+      [43.61, -83.86], [43.61, -83.82], [43.78, -83.70],
+      [43.78, -83.74]
+    ]
+  },
+  "reefs": {
+    color: "#5a9ab8",
+    coords: [
+      [43.78, -83.64], [43.78, -83.55], [43.87, -83.53],
+      [43.87, -83.62]
+    ]
+  },
+};
+
+/* ---- Launch coordinates ---- */
+const LAUNCH_GEO = {
+  "linwood":           { lat: 43.725, lng: -83.935 },
+  "au-gres":           { lat: 44.045, lng: -83.695 },
+  "sebewaing":         { lat: 43.733, lng: -83.450 },
+  "quanicassee":       { lat: 43.618, lng: -83.582 },
+  "bay-city-state-park":{ lat: 43.551, lng: -83.860 },
+  "essexville":        { lat: 43.610, lng: -83.843 },
+  "channel-access":    { lat: 43.635, lng: -83.800 },
+};
+
+/* ---- State ---- */
 const state = {
   loading: false,
   error: null,
@@ -13,747 +85,457 @@ const state = {
     launches: [],
     species: "walleye",
   }),
-  alerts: loadStored("saginaw:alerts", {
-    enabled: false,
-    scoreShiftThreshold: 10,
-    notifyOnBayCallChange: true,
-  }),
   lastSnapshot: null,
 };
 
+let map = null;
+let zonePolygons = {};
+let launchMarkers = {};
+
+/* ---- DOM refs ---- */
 const ui = {
+  bayCallBadge: document.getElementById("bay-call-badge"),
   updatedAt: document.getElementById("updated-at"),
-  statusMessage: document.getElementById("status-message"),
-  loadSnapshotButton: document.getElementById("load-snapshot"),
-  snapshotLock: document.getElementById("snapshot-lock"),
-  heroCall: document.getElementById("hero-call"),
   heroBest: document.getElementById("hero-best"),
   heroAvoid: document.getElementById("hero-avoid"),
   heroConfidence: document.getElementById("hero-confidence"),
-  whyContent: document.getElementById("why-content"),
+  heroRationale: document.getElementById("hero-rationale"),
   captainNote: document.getElementById("captain-note"),
-  conditionsContent: document.getElementById("conditions-content"),
-  zonesContent: document.getElementById("zones-content"),
-  launchesContent: document.getElementById("launches-content"),
-  reportsContent: document.getElementById("reports-content"),
-  prefsContent: document.getElementById("prefs-content"),
+  conditionsGrid: document.getElementById("conditions-grid"),
+  zonesGrid: document.getElementById("zones-grid"),
+  launchesList: document.getElementById("launches-list"),
+  reportsList: document.getElementById("reports-list"),
 };
 
-document.addEventListener("click", (event) => {
-  const target = event.target;
-  if (!(target instanceof Element)) {
-    return;
-  }
+/* ---- Event delegation ---- */
+document.addEventListener("click", (e) => {
+  const t = e.target;
+  if (!(t instanceof Element)) return;
 
-  if (target.closest("#load-snapshot")) {
-    loadOrFetchSummary({ includeAi: false });
-    return;
-  }
-
-  const favoriteButton = target.closest("[data-fav-kind]");
-  if (favoriteButton) {
-    const kind = favoriteButton.dataset.favKind;
-    const id = favoriteButton.dataset.favId;
-    if (kind && id) {
-      toggleFavorite(kind, id);
-    }
-    return;
-  }
-
-  const speciesButton = target.closest("[data-species]");
-  if (speciesButton) {
-    const species = speciesButton.dataset.species;
+  const speciesBtn = t.closest("[data-species]");
+  if (speciesBtn) {
+    const species = speciesBtn.dataset.species;
     if (species && species !== state.favorites.species) {
       state.favorites.species = species;
       saveStored("saginaw:favorites", state.favorites);
-      if (state.data) {
-        loadOrFetchSummary({ includeAi: false });
-      } else {
-        hydrateTodayFromLocal();
-        render();
-      }
+      updateSpeciesButtons();
+      fetchSummary({ includeAi: false });
     }
     return;
   }
 
-  const aiNoteButton = target.closest("[data-action='generate-ai-note']");
-  if (aiNoteButton) {
-    loadOrFetchSummary({ includeAi: true });
+  const aiBtn = t.closest("[data-action='generate-ai-note']");
+  if (aiBtn) {
+    fetchSummary({ includeAi: true });
     return;
   }
 
-  const notifyButton = target.closest("[data-action='request-notify']");
-  if (notifyButton) {
-    requestNotificationPermission();
-  }
-});
-
-document.addEventListener("change", (event) => {
-  const target = event.target;
-  if (!(target instanceof HTMLElement)) {
+  const favBtn = t.closest("[data-fav-kind]");
+  if (favBtn) {
+    toggleFavorite(favBtn.dataset.favKind, favBtn.dataset.favId);
     return;
   }
-
-  if (target.matches("#alerts-enabled")) {
-    const checkbox = /** @type {HTMLInputElement} */ (target);
-    state.alerts.enabled = checkbox.checked;
-    saveStored("saginaw:alerts", state.alerts);
-  }
-
-  if (target.matches("#notify-bay-call")) {
-    const checkbox = /** @type {HTMLInputElement} */ (target);
-    state.alerts.notifyOnBayCallChange = checkbox.checked;
-    saveStored("saginaw:alerts", state.alerts);
-  }
 });
 
-document.addEventListener("input", (event) => {
-  const target = event.target;
-  if (!(target instanceof HTMLElement)) {
-    return;
-  }
-
-  if (target.matches("#score-shift")) {
-    const slider = /** @type {HTMLInputElement} */ (target);
-    state.alerts.scoreShiftThreshold = Number(slider.value);
-    const valueNode = document.getElementById("score-shift-value");
-    if (valueNode) {
-      valueNode.textContent = `${state.alerts.scoreShiftThreshold} pts`;
-    }
-    saveStored("saginaw:alerts", state.alerts);
-  }
-});
-
+/* ---- Init ---- */
 function init() {
-  hydrateTodayFromLocal();
-  render();
+  initMap();
+  updateSpeciesButtons();
+  fetchSummary({ includeAi: false });
 }
 
-async function loadOrFetchSummary(options = {}) {
-  const includeAi = Boolean(options.includeAi);
-  const species = state.favorites.species || "walleye";
-  const dayKey = getDateKeyInTimeZone(APP_TIMEZONE);
-  const storageKey = snapshotStorageKey(species, dayKey);
+/* ---- Map ---- */
+function initMap() {
+  map = L.map("bay-map", {
+    center: [43.78, -83.68],
+    zoom: 9,
+    scrollWheelZoom: false,
+    attributionControl: true,
+  });
 
-  const localSnapshot = loadStored(storageKey, null);
-  if (isValidSnapshot(localSnapshot, dayKey) && (!includeAi || localSnapshot.captainNote?.text)) {
-    state.data = localSnapshot;
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
+    maxZoom: 14,
+    subdomains: "abcd",
+  }).addTo(map);
+
+  /* Draw zone polygons (default color, updated after data loads) */
+  for (const [zoneId, geo] of Object.entries(ZONE_GEO)) {
+    const polygon = L.polygon(geo.coords, {
+      color: "#3d7a9c",
+      weight: 1.5,
+      fillColor: "#3d7a9c",
+      fillOpacity: 0.15,
+    }).addTo(map);
+    polygon.bindTooltip(zoneIdToName(zoneId), {
+      sticky: true,
+      className: "zone-tooltip",
+    });
+    zonePolygons[zoneId] = polygon;
+  }
+
+  /* Place launch markers */
+  const launchIcon = L.divIcon({
+    className: "launch-icon",
+    html: '<svg width="20" height="24" viewBox="0 0 20 24"><path d="M10 0C4.5 0 0 4.5 0 10c0 7.5 10 14 10 14s10-6.5 10-14C20 4.5 15.5 0 10 0z" fill="#1a2e3b"/><circle cx="10" cy="10" r="4" fill="#f5f0e8"/></svg>',
+    iconSize: [20, 24],
+    iconAnchor: [10, 24],
+    tooltipAnchor: [0, -24],
+  });
+
+  for (const [launchId, geo] of Object.entries(LAUNCH_GEO)) {
+    const marker = L.marker([geo.lat, geo.lng], { icon: launchIcon }).addTo(map);
+    marker.bindTooltip(launchIdToName(launchId), { direction: "top" });
+    launchMarkers[launchId] = marker;
+  }
+}
+
+function updateMapFromData(data) {
+  if (!map || !data || !data.zones) return;
+
+  for (const zone of data.zones) {
+    const polygon = zonePolygons[zone.id];
+    if (!polygon) continue;
+
+    const c = scoreColor(zone.tripScore);
+    polygon.setStyle({
+      color: c,
+      fillColor: c,
+      fillOpacity: 0.25,
+      weight: 2,
+    });
+    polygon.unbindTooltip();
+    polygon.bindTooltip(
+      `<strong>${esc(zone.name)}</strong><br>Trip Score: ${zone.tripScore}<br>${esc(zone.recommendation || "")}`,
+      { sticky: true, className: "zone-tooltip" }
+    );
+  }
+}
+
+function scoreColor(score) {
+  if (score >= 72) return "#2d8659";
+  if (score >= 56) return "#c68b2c";
+  return "#b84040";
+}
+
+/* ---- Data Fetching ---- */
+async function fetchSummary({ includeAi = false } = {}) {
+  const species = state.favorites.species || "walleye";
+  const dayKey = getDateKey();
+
+  /* Check local cache first */
+  const storageKey = `${SNAPSHOT_PREFIX}:${species}:${dayKey}`;
+  const cached = loadStored(storageKey, null);
+  if (isValidSnapshot(cached, dayKey) && (!includeAi || cached.captainNote?.text)) {
+    state.data = cached;
     state.dataSource = "local";
     state.error = null;
     state.loading = false;
-    syncSnapshotMemory(localSnapshot);
-    pruneOldSnapshots(dayKey);
     render();
     return;
   }
 
   state.loading = true;
   state.error = null;
-  renderStatus();
+  renderLoading();
 
-  const params = new URLSearchParams();
-  params.set("species", species);
-  params.set("day", dayKey);
-  if (includeAi) {
-    params.set("includeAi", "1");
-  }
+  const params = new URLSearchParams({ species, day: dayKey });
+  if (includeAi) params.set("includeAi", "1");
 
   try {
-    const response = await fetch(`${SUMMARY_ENDPOINT}?${params.toString()}`, {
+    const resp = await fetch(`${SUMMARY_ENDPOINT}?${params}`, {
       headers: { Accept: "application/json" },
     });
+    if (!resp.ok) throw new Error(`API ${resp.status}`);
 
-    if (!response.ok) {
-      throw new Error(`API returned ${response.status}`);
-    }
-
-    const payload = await response.json();
+    const payload = await resp.json();
     payload.snapshotDate = payload.snapshotDate || dayKey;
-    handlePotentialAlert(payload);
     state.data = payload;
-    state.dataSource = payload.cache && String(payload.cache).includes("hit") ? "server-cache" : "network";
+    state.dataSource = "network";
     state.loading = false;
+    state.error = null;
 
     saveStored(storageKey, payload);
     pruneOldSnapshots(dayKey);
     render();
-  } catch (error) {
-    state.error = error instanceof Error ? error.message : "Failed to load summary";
+  } catch (err) {
+    state.error = err.message || "Failed to load";
     state.loading = false;
-    render();
+    renderError();
   }
 }
 
-function hydrateTodayFromLocal() {
-  const species = state.favorites.species || "walleye";
-  const dayKey = getDateKeyInTimeZone(APP_TIMEZONE);
-  pruneOldSnapshots(dayKey);
-  const snapshot = loadStored(snapshotStorageKey(species, dayKey), null);
-  if (!isValidSnapshot(snapshot, dayKey)) {
-    return;
-  }
-
-  state.data = snapshot;
-  state.dataSource = "local";
-  state.error = null;
-  state.loading = false;
-  syncSnapshotMemory(snapshot);
-}
-
+/* ---- Render orchestration ---- */
 function render() {
-  renderStatus();
-  renderHero();
+  renderBayCall();
   renderConditions();
   renderZones();
   renderLaunches();
   renderReports();
-  renderPreferences();
+  renderCaptainNote();
+  updateMapFromData(state.data);
 }
 
-function renderStatus() {
-  if (state.loading) {
-    ui.statusMessage.textContent = "Generating today's locked snapshot...";
-    ui.updatedAt.textContent = "Loading...";
-    if (ui.snapshotLock) {
-      ui.snapshotLock.textContent = "Snapshot lock: pending";
-    }
-    if (ui.loadSnapshotButton) {
-      ui.loadSnapshotButton.disabled = true;
-      ui.loadSnapshotButton.textContent = "Loading...";
-    }
-    return;
-  }
+function renderLoading() {
+  ui.bayCallBadge.className = "bay-call-badge loading";
+  ui.bayCallBadge.querySelector(".call-label").textContent = "Loading...";
+  ui.updatedAt.textContent = "Fetching conditions...";
+}
 
-  if (ui.loadSnapshotButton) {
-    ui.loadSnapshotButton.disabled = false;
-    ui.loadSnapshotButton.textContent = "Load Today's Snapshot";
-  }
+function renderError() {
+  ui.bayCallBadge.className = "bay-call-badge nogo";
+  ui.bayCallBadge.querySelector(".call-label").textContent = "Error";
+  ui.updatedAt.textContent = state.error || "Load failed";
+}
 
-  if (state.error) {
-    ui.statusMessage.textContent = `Could not load snapshot (${state.error}).`;
-    ui.updatedAt.textContent = "Load failed";
-    if (ui.snapshotLock) {
-      ui.snapshotLock.textContent = "Snapshot lock: inactive";
-    }
-    return;
-  }
+/* ---- Bay Call ---- */
+function renderBayCall() {
+  const d = state.data;
+  if (!d) return;
+  const bc = d.bayCall || {};
+  const cls = bc.goNoGo === "GO" ? "go" : bc.goNoGo === "CAUTION" ? "caution" : "nogo";
+  ui.bayCallBadge.className = `bay-call-badge ${cls}`;
+  ui.bayCallBadge.querySelector(".call-label").textContent = bc.label || "Pending";
 
-  if (!state.data) {
-    ui.statusMessage.textContent = "Press Load Today's Snapshot when you want data. No API call happens before that.";
-    ui.updatedAt.textContent = "Snapshot not loaded";
-    if (ui.snapshotLock) {
-      ui.snapshotLock.textContent = "Snapshot lock: inactive";
-    }
-    return;
-  }
+  const snap = d.snapshotDate || getDateKey();
+  const src = state.dataSource === "local" ? "cached" : "live";
+  ui.updatedAt.textContent = `${snap} | ${src} | ${relTime(d.generatedAt)}`;
 
-  const snapshotDate = state.data.snapshotDate || getDateKeyInTimeZone(APP_TIMEZONE);
-  const sourceNote = state.dataSource === "local"
-    ? "Loaded from local daily cache."
-    : state.dataSource === "server-cache"
-      ? "Loaded from server daily cache."
-      : "Generated from live sources and locked for today.";
+  ui.heroBest.textContent = d.bestSetup?.name || "--";
+  ui.heroAvoid.textContent = d.avoidOrCaution || "--";
+  ui.heroConfidence.textContent = `${capitalize(bc.confidenceLabel || "unknown")} (${bc.confidenceScore ?? "--"})`;
 
-  ui.statusMessage.textContent = `${state.data.bayCall?.summary || "Snapshot loaded."} ${sourceNote}`;
-  ui.updatedAt.textContent = `Snapshot day ${snapshotDate} | generated ${formatRelativeTime(state.data.generatedAt)}`;
-  if (ui.snapshotLock) {
-    ui.snapshotLock.textContent = `Snapshot lock: ${snapshotDate}`;
+  const reasons = (bc.rationale || []).slice(0, 5);
+  if (reasons.length) {
+    ui.heroRationale.innerHTML = `<ul>${reasons.map(r => `<li>${esc(r)}</li>`).join("")}</ul>`;
+  } else {
+    ui.heroRationale.innerHTML = `<p class="muted">No rationale available.</p>`;
   }
 }
 
-function renderHero() {
-  if (!state.data) {
-    ui.heroCall.textContent = "Not loaded";
-    ui.heroCall.className = "badge neutral";
-    ui.heroBest.textContent = "-";
-    ui.heroAvoid.textContent = "-";
-    ui.heroConfidence.textContent = "-";
-    ui.whyContent.innerHTML = "<li>Load today's snapshot to view decision drivers.</li>";
-    if (ui.captainNote) {
-      ui.captainNote.textContent = "Optional and server-side only. Not generated until requested.";
-    }
-    return;
-  }
-
-  const bayCall = state.data.bayCall || {};
-  ui.heroCall.textContent = bayCall.label || "Pending";
-  ui.heroCall.className = `badge ${bayCallClass(bayCall.goNoGo)}`;
-  ui.heroBest.textContent = state.data.bestSetup?.name || "-";
-  ui.heroAvoid.textContent = state.data.avoidOrCaution || "-";
-  ui.heroConfidence.textContent = `${capitalize(bayCall.confidenceLabel || "unknown")} (${bayCall.confidenceScore ?? "-"})`;
-
-  const reasons = (bayCall.rationale || []).slice(0, 5);
-  ui.whyContent.innerHTML = reasons.length
-    ? reasons.map((reason) => `<li>${escapeHtml(reason)}</li>`).join("")
-    : "<li>No explanation available.</li>";
-
-  if (ui.captainNote) {
-    if (state.data.captainNote?.text) {
-      ui.captainNote.textContent = state.data.captainNote.text;
-    } else if (state.data.ai?.requested && state.data.ai?.generated === false) {
-      ui.captainNote.textContent = "AI note unavailable right now. Check OPENAI_API_KEY and try again.";
-    } else {
-      ui.captainNote.textContent = "Tap Generate Note for an optional AI captain summary.";
-    }
-  }
-}
-
+/* ---- Conditions ---- */
 function renderConditions() {
-  if (!state.data) {
-    ui.conditionsContent.innerHTML = '<p class="empty-state">Load snapshot to view conditions.</p>';
-    return;
-  }
+  const c = state.data?.conditions;
+  if (!c) return;
 
-  const c = state.data.conditions || {};
   const fields = [
-    { label: "Wind", value: c.windMph != null ? `${Math.round(c.windMph)} mph ${c.windDirectionCardinal || ""}`.trim() : "-" },
-    { label: "Waves", value: c.waveFt != null ? `${toFixed(c.waveFt, 1)} ft` : "-" },
-    { label: "NOAA Grid Wave", value: c.waveFtNoaaGrid != null ? `${toFixed(c.waveFtNoaaGrid, 1)} ft` : "-" },
-    { label: "Air Temp", value: c.airTempF != null ? `${Math.round(c.airTempF)}°F` : "-" },
-    { label: "Water Temp", value: c.waterTempF != null ? `${Math.round(c.waterTempF)}°F` : "-" },
-    { label: "Small-Boat Window", value: c.smallBoatWindowHours != null ? `${c.smallBoatWindowHours} hrs` : "-" },
-    { label: "Window Label", value: c.smallBoatWindowLabel || "-" },
-    { label: "Water Level", value: c.waterLevelFtIGLD != null ? `${toFixed(c.waterLevelFtIGLD, 2)} ft IGLD` : "-" },
-    { label: "Water Trend (6h)", value: c.waterLevelTrend6hFt != null ? `${toFixed(c.waterLevelTrend6hFt, 2)} ft (${c.waterLevelTrendLabel || "trend"})` : "-" },
-    { label: "Shoreline Forecast", value: c.shorelineForecastShort || "-" },
+    { label: "Wind", value: c.windMph != null ? `${Math.round(c.windMph)} mph ${c.windDirectionCardinal || ""}` : "--" },
+    { label: "Waves", value: c.waveFt != null ? `${fix(c.waveFt, 1)} ft` : "--" },
+    { label: "Air Temp", value: c.airTempF != null ? `${Math.round(c.airTempF)}\u00B0F` : "--" },
+    { label: "Water Temp", value: c.waterTempF != null ? `${Math.round(c.waterTempF)}\u00B0F` : "--" },
+    { label: "Boat Window", value: c.smallBoatWindowHours != null ? `${c.smallBoatWindowHours} hrs (${c.smallBoatWindowLabel || ""})` : "--" },
+    { label: "Water Level", value: c.waterLevelFtIGLD != null ? `${fix(c.waterLevelFtIGLD, 2)} ft IGLD` : "--" },
+    { label: "Level Trend", value: c.waterLevelTrendLabel || "--" },
+    { label: "Shoreline", value: c.shorelineForecastShort || "--" },
+    { label: "NOAA Waves", value: c.waveFtNoaaGrid != null ? `${fix(c.waveFtNoaaGrid, 1)} ft` : "--" },
     { label: "Advisories", value: c.alertHeadline || "None active" },
   ];
 
-  ui.conditionsContent.innerHTML = fields
-    .map(
-      (item) => `
-      <div class="condition-box">
-        <span class="metric-label">${escapeHtml(item.label)}</span>
-        <p class="value">${escapeHtml(item.value)}</p>
-      </div>
-    `,
-    )
-    .join("");
+  ui.conditionsGrid.innerHTML = fields.map(f => `
+    <div class="cond-box">
+      <span class="cond-label">${esc(f.label)}</span>
+      <p class="cond-value">${esc(f.value)}</p>
+    </div>
+  `).join("");
 }
 
+/* ---- Zones ---- */
 function renderZones() {
-  if (!state.data) {
-    ui.zonesContent.innerHTML = '<p class="empty-state">Load snapshot to score zones.</p>';
-    return;
-  }
+  const zones = state.data?.zones;
+  if (!zones || !zones.length) return;
 
-  const zones = state.data.zones || [];
-  if (!zones.length) {
-    ui.zonesContent.innerHTML = '<p class="empty-state">No zone scores available.</p>';
-    return;
-  }
-
-  ui.zonesContent.innerHTML = zones
-    .map((zone) => {
-      const isFavorite = state.favorites.zones.includes(zone.id);
-      const scoreTone = zoneScoreTone(zone.tripScore);
-      const action = zone.action || {};
-      return `
-      <article class="zone-card">
-        <div class="zone-head">
-          <div>
-            <h3>${escapeHtml(zone.name)}</h3>
-            <p class="muted">${escapeHtml(zone.recommendation || "")}</p>
-          </div>
-          <button class="fav-btn ${isFavorite ? "active" : ""}" data-fav-kind="zones" data-fav-id="${escapeHtml(zone.id)}" aria-label="Favorite zone">
-            ${isFavorite ? "★" : "☆"}
-          </button>
+  ui.zonesGrid.innerHTML = zones.map(z => {
+    const tone = z.tripScore >= 72 ? "strong" : z.tripScore >= 56 ? "moderate" : "weak";
+    const isFav = state.favorites.zones.includes(z.id);
+    const a = z.action || {};
+    return `
+    <article class="zone-card">
+      <div class="zone-head">
+        <div>
+          <h3>${esc(z.name)}</h3>
+          <span class="zone-rec">${esc(z.recommendation || "")}</span>
         </div>
-        <div class="mini-grid">
-          <div class="mini-item"><span class="k">Trip</span><span class="v">${zone.tripScore}</span></div>
-          <div class="mini-item"><span class="k">Safety</span><span class="v">${zone.safety}</span></div>
-          <div class="mini-item"><span class="k">Fishability</span><span class="v">${zone.fishability}</span></div>
-          <div class="mini-item"><span class="k">Confidence</span><span class="v">${zone.confidence}</span></div>
+        <div style="display:flex;gap:0.4rem;align-items:center">
+          <span class="score-badge ${tone}">${z.tripScore}</span>
+          <button class="fav-btn ${isFav ? "active" : ""}" data-fav-kind="zones" data-fav-id="${esc(z.id)}" aria-label="Favorite">${isFav ? "\u2605" : "\u2606"}</button>
         </div>
-        <p><span class="score-pill ${scoreTone}">Score ${zone.tripScore}</span></p>
-        <div class="zone-action-block">
-          <p><strong>Best Launch:</strong> ${escapeHtml(action.bestLaunchName || "Not specified")}</p>
-          <p>${escapeHtml(action.launchReason || "")}</p>
-          <p><strong>Window:</strong> ${escapeHtml(action.windowPlan || "")}</p>
-          <p><strong>Tactic:</strong> ${escapeHtml(action.technique || "")}</p>
-          <p><strong>Caution:</strong> ${escapeHtml(action.caution || "Use standard caution.")}</p>
-          <p class="muted">${escapeHtml(action.sourceBlend || "")}</p>
-        </div>
-        <ul class="list compact">
-          ${(zone.why || []).slice(0, 5).map((reason) => `<li>${escapeHtml(reason)}</li>`).join("")}
-        </ul>
-      </article>
-    `;
-    })
-    .join("");
+      </div>
+      <div class="zone-stats">
+        <div class="zone-stat"><span class="stat-label">Safety</span><span class="stat-val">${z.safety}</span></div>
+        <div class="zone-stat"><span class="stat-label">Fishability</span><span class="stat-val">${z.fishability}</span></div>
+        <div class="zone-stat"><span class="stat-label">Signal</span><span class="stat-val">${z.recentSignal}</span></div>
+        <div class="zone-stat"><span class="stat-label">Confidence</span><span class="stat-val">${z.confidence}</span></div>
+      </div>
+      <div class="zone-action">
+        <p><strong>Launch:</strong> ${esc(a.bestLaunchName || "N/A")}. ${esc(a.launchReason || "")}</p>
+        <p><strong>Window:</strong> ${esc(a.windowPlan || "")}</p>
+        <p><strong>Tactic:</strong> ${esc(a.technique || "")}</p>
+        <p><strong>Caution:</strong> ${esc(a.caution || "Standard caution.")}</p>
+      </div>
+    </article>`;
+  }).join("");
 }
 
+/* ---- Launches ---- */
 function renderLaunches() {
-  if (!state.data) {
-    ui.launchesContent.innerHTML = '<p class="empty-state">Load snapshot to rank launches.</p>';
-    return;
-  }
+  const launches = state.data?.launches;
+  if (!launches || !launches.length) return;
 
-  const launches = state.data.launches || [];
-  if (!launches.length) {
-    ui.launchesContent.innerHTML = '<p class="empty-state">No launch guidance available.</p>';
-    return;
-  }
-
-  ui.launchesContent.innerHTML = launches
-    .slice(0, 6)
-    .map((launch) => {
-      const isFavorite = state.favorites.launches.includes(launch.id);
-      return `
-      <article class="launch-card">
-        <div class="launch-head">
-          <div>
-            <h3>${escapeHtml(launch.name)}</h3>
-            <p class="muted">${escapeHtml(launch.zoneName)} | ${escapeHtml(launch.advice)}</p>
-          </div>
-          <button class="fav-btn ${isFavorite ? "active" : ""}" data-fav-kind="launches" data-fav-id="${escapeHtml(launch.id)}" aria-label="Favorite launch">
-            ${isFavorite ? "★" : "☆"}
-          </button>
+  ui.launchesList.innerHTML = launches.slice(0, 7).map(l => {
+    const isFav = state.favorites.launches.includes(l.id);
+    return `
+    <article class="launch-card">
+      <div class="launch-head">
+        <div>
+          <h3>${esc(l.name)}</h3>
+          <span class="launch-meta">${esc(l.zoneName)} | Score ${l.score} | ${esc(l.advice)}</span>
         </div>
-        <p class="muted">Exposure: ${escapeHtml(launch.exposureSummary)}</p>
-        <p>${escapeHtml(launch.notes || "")}</p>
-      </article>
-      `;
-    })
-    .join("");
+        <button class="fav-btn ${isFav ? "active" : ""}" data-fav-kind="launches" data-fav-id="${esc(l.id)}">${isFav ? "\u2605" : "\u2606"}</button>
+      </div>
+      <p class="launch-notes">${esc(l.exposureSummary)} ${esc(l.notes || "")}</p>
+    </article>`;
+  }).join("");
 }
 
+/* ---- Reports ---- */
 function renderReports() {
-  if (!state.data) {
-    ui.reportsContent.innerHTML = '<p class="empty-state">Load snapshot to view bite signal.</p>';
-    return;
-  }
-
-  const reports = state.data.reports || {};
+  const reports = state.data?.reports;
+  if (!reports) return;
   const items = reports.items || [];
-  const sourceSummary = reports.sourceSummary || "No source summary.";
+  const summary = reports.sourceSummary || "";
 
-  ui.reportsContent.innerHTML = `
-    <p class="muted">${escapeHtml(sourceSummary)}</p>
-    ${
-      items.length
-        ? items
-            .slice(0, 7)
-            .map(
-              (item) => `
+  ui.reportsList.innerHTML = `
+    <p class="muted">${esc(summary)}</p>
+    ${items.length ? items.slice(0, 6).map(r => `
       <article class="report-card">
         <div class="report-head">
-          <strong>${escapeHtml(item.zoneName || item.zoneId || "Bay-wide")}</strong>
-          <span class="muted">${escapeHtml(formatRelativeTime(item.observedAt))}</span>
+          <h3>${esc(r.zoneName || r.zoneId || "Bay-wide")}</h3>
+          <span class="report-meta">${esc(relTime(r.observedAt))}</span>
         </div>
-        <p>${escapeHtml(item.summary || "Report received.")}</p>
-        <p class="muted">${escapeHtml(item.source || "Unknown source")} | Signal ${signalLabel(item.signal)}</p>
+        <p class="report-summary">${esc(r.summary || "Report received.")}</p>
+        <span class="report-meta">${esc(r.source || "Unknown")} | Signal ${sigLabel(r.signal)}</span>
       </article>
-    `,
-            )
-            .join("")
-        : '<p class="empty-state">No recent reports.</p>'
-    }
+    `).join("") : '<p class="muted">No recent reports.</p>'}
   `;
 }
 
-function renderPreferences() {
-  const species = ["walleye", "perch", "mixed"];
-  const activeSpecies = state.favorites.species || "walleye";
-  const notificationState = typeof Notification === "undefined" ? "unsupported" : Notification.permission;
-  const dayKey = state.data?.snapshotDate || getDateKeyInTimeZone(APP_TIMEZONE);
-
-  const favoriteZoneNames = (state.data?.zones || [])
-    .filter((zone) => state.favorites.zones.includes(zone.id))
-    .map((zone) => zone.name);
-  const favoriteLaunchNames = (state.data?.launches || [])
-    .filter((launch) => state.favorites.launches.includes(launch.id))
-    .map((launch) => launch.name);
-
-  ui.prefsContent.innerHTML = `
-    <div>
-      <p class="metric-label">Target Species</p>
-      <div class="control-row">
-        ${species
-          .map(
-            (value) => `
-          <button type="button" class="chip-btn ${value === activeSpecies ? "active" : ""}" data-species="${value}">
-            ${capitalize(value)}
-          </button>
-        `,
-          )
-          .join("")}
-      </div>
-      <p class="muted">Daily lock date: ${dayKey} (changes next day).</p>
-    </div>
-
-    <div>
-      <p class="metric-label">Favorites</p>
-      <p class="muted">Zones: ${favoriteZoneNames.length ? escapeHtml(favoriteZoneNames.join(", ")) : "none"}</p>
-      <p class="muted">Launches: ${favoriteLaunchNames.length ? escapeHtml(favoriteLaunchNames.join(", ")) : "none"}</p>
-    </div>
-
-    <label class="switch">
-      <input id="alerts-enabled" type="checkbox" ${state.alerts.enabled ? "checked" : ""}>
-      Enable condition-change alerts
-    </label>
-
-    <label class="switch">
-      <input id="notify-bay-call" type="checkbox" ${state.alerts.notifyOnBayCallChange ? "checked" : ""}>
-      Notify when bay call changes
-    </label>
-
-    <div class="range-wrap">
-      <label class="metric-label" for="score-shift">Alert when top-zone score shifts</label>
-      <strong id="score-shift-value">${state.alerts.scoreShiftThreshold} pts</strong>
-      <input id="score-shift" type="range" min="4" max="25" step="1" value="${state.alerts.scoreShiftThreshold}">
-    </div>
-
-    <div class="control-row">
-      <button type="button" class="chip-btn" data-action="request-notify">Enable Browser Notifications</button>
-      <span class="muted">Notification permission: ${notificationState}</span>
-    </div>
-  `;
-}
-
-function toggleFavorite(kind, id) {
-  if (!["zones", "launches"].includes(kind)) {
-    return;
+/* ---- Captain Note ---- */
+function renderCaptainNote() {
+  const d = state.data;
+  if (!d || !ui.captainNote) return;
+  if (d.captainNote?.text) {
+    ui.captainNote.textContent = d.captainNote.text;
+    ui.captainNote.className = "";
+  } else if (d.ai?.requested && d.ai?.generated === false) {
+    ui.captainNote.textContent = "AI note unavailable. Check API key and retry.";
   }
+}
 
+/* ---- Species buttons ---- */
+function updateSpeciesButtons() {
+  document.querySelectorAll("[data-species]").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.species === state.favorites.species);
+  });
+}
+
+/* ---- Favorites ---- */
+function toggleFavorite(kind, id) {
+  if (!["zones", "launches"].includes(kind) || !id) return;
   const list = state.favorites[kind];
-  const next = list.includes(id) ? list.filter((item) => item !== id) : [...list, id];
-  state.favorites[kind] = next;
+  state.favorites[kind] = list.includes(id)
+    ? list.filter(x => x !== id)
+    : [...list, id];
   saveStored("saginaw:favorites", state.favorites);
   render();
 }
 
-function handlePotentialAlert(nextPayload) {
-  const topZone = nextPayload?.zones?.[0];
-  const snapshot = {
-    bayCall: nextPayload?.bayCall?.goNoGo || null,
-    bayLabel: nextPayload?.bayCall?.label || null,
-    topZoneId: topZone?.id || null,
-    topZoneScore: topZone?.tripScore ?? null,
+/* ---- Helpers ---- */
+function zoneIdToName(id) {
+  const map = {
+    "west-side": "West Side", "east-side": "East Side",
+    "inner-bay": "Inner Bay", "outer-bay": "Outer Bay",
+    "river-mouth": "River Mouth", "shipping-channel": "Shipping Channel",
+    "reefs": "Named Reefs",
   };
-
-  const previous = state.lastSnapshot;
-  state.lastSnapshot = snapshot;
-
-  if (!state.alerts.enabled || !previous || typeof Notification === "undefined") {
-    return;
-  }
-
-  const bayChanged = state.alerts.notifyOnBayCallChange && previous.bayCall !== snapshot.bayCall;
-  const zoneChanged = previous.topZoneId && previous.topZoneId !== snapshot.topZoneId;
-  const scoreShift =
-    Number.isFinite(previous.topZoneScore) &&
-    Number.isFinite(snapshot.topZoneScore) &&
-    Math.abs(previous.topZoneScore - snapshot.topZoneScore) >= state.alerts.scoreShiftThreshold;
-
-  if (!bayChanged && !zoneChanged && !scoreShift) {
-    return;
-  }
-
-  const pieces = [];
-  if (bayChanged) {
-    pieces.push(`Bay call changed to ${snapshot.bayLabel}.`);
-  }
-  if (zoneChanged) {
-    pieces.push("Top zone switched.");
-  }
-  if (scoreShift) {
-    pieces.push(`Top-zone score moved ${Math.abs(previous.topZoneScore - snapshot.topZoneScore)} points.`);
-  }
-  notify("Saginaw Bay condition update", pieces.join(" "));
+  return map[id] || id;
 }
 
-function syncSnapshotMemory(payload) {
-  const topZone = payload?.zones?.[0];
-  state.lastSnapshot = {
-    bayCall: payload?.bayCall?.goNoGo || null,
-    bayLabel: payload?.bayCall?.label || null,
-    topZoneId: topZone?.id || null,
-    topZoneScore: topZone?.tripScore ?? null,
+function launchIdToName(id) {
+  const map = {
+    "linwood": "Linwood Beach Marina", "au-gres": "Au Gres Harbor",
+    "sebewaing": "Sebewaing Harbor", "quanicassee": "Quanicassee DNR Launch",
+    "bay-city-state-park": "Bay City State Park", "essexville": "Essexville Access",
+    "channel-access": "Shipping Channel Access",
   };
+  return map[id] || id;
 }
 
-async function requestNotificationPermission() {
-  if (typeof Notification === "undefined") {
-    return;
-  }
-
-  if (Notification.permission === "granted") {
-    notify("Notifications already enabled", "You will receive condition-change alerts when triggers fire.");
-    return;
-  }
-
-  if (Notification.permission === "denied") {
-    return;
-  }
-
-  const permission = await Notification.requestPermission();
-  if (permission === "granted") {
-    notify("Alerts enabled", "Condition-change notifications are now active in this browser.");
-  }
-  renderPreferences();
+function getDateKey(d = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: APP_TIMEZONE,
+    year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(d);
+  const m = Object.fromEntries(parts.map(p => [p.type, p.value]));
+  return `${m.year}-${m.month}-${m.day}`;
 }
 
-function notify(title, body) {
-  if (typeof Notification === "undefined" || Notification.permission !== "granted") {
-    return;
-  }
-  new Notification(title, { body });
+function isValidSnapshot(s, dayKey) {
+  return s && typeof s === "object" && s.snapshotDate === dayKey && s.apiVersion === REQUIRED_API_VERSION;
 }
 
-function bayCallClass(goNoGo) {
-  if (goNoGo === "GO") {
-    return "good";
-  }
-  if (goNoGo === "CAUTION") {
-    return "caution";
-  }
-  if (goNoGo === "NO_GO") {
-    return "bad";
-  }
-  return "neutral";
+function relTime(input) {
+  if (!input) return "unknown";
+  const ms = Date.now() - new Date(input).getTime();
+  if (isNaN(ms)) return "unknown";
+  const min = Math.max(0, Math.round(ms / 60000));
+  if (min < 1) return "just now";
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.round(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  return `${Math.round(hr / 24)}d ago`;
 }
 
-function zoneScoreTone(score) {
-  if (score >= 72) {
-    return "strong";
-  }
-  if (score >= 56) {
-    return "moderate";
-  }
-  return "weak";
-}
-
-function signalLabel(signal) {
-  if (signal >= 0.35) {
-    return "positive";
-  }
-  if (signal <= -0.2) {
-    return "negative";
-  }
+function sigLabel(s) {
+  if (s >= 0.35) return "positive";
+  if (s <= -0.2) return "negative";
   return "mixed";
 }
 
-function capitalize(value) {
-  if (!value) {
-    return "";
-  }
-  return `${value[0].toUpperCase()}${value.slice(1)}`;
-}
+function capitalize(v) { return v ? v[0].toUpperCase() + v.slice(1) : ""; }
+function fix(v, d) { return v != null && !isNaN(v) ? Number(v).toFixed(d) : "--"; }
 
-function formatRelativeTime(input) {
-  if (!input) {
-    return "unknown";
-  }
-
-  const value = new Date(input).getTime();
-  if (Number.isNaN(value)) {
-    return "unknown";
-  }
-
-  const diffMs = Date.now() - value;
-  const diffMin = Math.max(0, Math.round(diffMs / 60000));
-  if (diffMin < 1) {
-    return "just now";
-  }
-  if (diffMin < 60) {
-    return `${diffMin}m ago`;
-  }
-  const diffHr = Math.round(diffMin / 60);
-  if (diffHr < 24) {
-    return `${diffHr}h ago`;
-  }
-  const diffDay = Math.round(diffHr / 24);
-  return `${diffDay}d ago`;
-}
-
-function getDateKeyInTimeZone(timeZone, date = new Date()) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(date);
-
-  const map = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return `${map.year}-${map.month}-${map.day}`;
-}
-
-function toFixed(value, digits) {
-  if (value == null || Number.isNaN(Number(value))) {
-    return "-";
-  }
-  return Number(value).toFixed(digits);
-}
-
-function escapeHtml(input) {
-  const value = String(input ?? "");
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
-function snapshotStorageKey(species, dayKey) {
-  return `${SNAPSHOT_PREFIX}:${species}:${dayKey}`;
-}
-
-function isValidSnapshot(snapshot, expectedDayKey) {
-  return Boolean(
-    snapshot
-    && typeof snapshot === "object"
-    && snapshot.snapshotDate === expectedDayKey
-    && snapshot.apiVersion === REQUIRED_API_VERSION,
-  );
-}
-
-function pruneOldSnapshots(activeDayKey) {
-  try {
-    for (let index = localStorage.length - 1; index >= 0; index -= 1) {
-      const key = localStorage.key(index);
-      if (!key || !key.startsWith(`${SNAPSHOT_PREFIX}:`)) {
-        continue;
-      }
-      if (!key.endsWith(`:${activeDayKey}`)) {
-        localStorage.removeItem(key);
-      }
-    }
-  } catch {
-    // Ignore storage failures.
-  }
+function esc(s) {
+  return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
 function loadStored(key, fallback) {
   try {
     const raw = localStorage.getItem(key);
-    if (!raw) {
-      return fallback;
-    }
+    if (!raw) return fallback;
     const parsed = JSON.parse(raw);
-    if (
-      fallback
-      && typeof fallback === "object"
-      && !Array.isArray(fallback)
-      && parsed
-      && typeof parsed === "object"
-      && !Array.isArray(parsed)
-    ) {
+    if (fallback && typeof fallback === "object" && !Array.isArray(fallback) &&
+        parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
       return { ...fallback, ...parsed };
     }
     return parsed;
-  } catch {
-    return fallback;
-  }
+  } catch { return fallback; }
 }
 
 function saveStored(key, value) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // Ignore storage failures.
-  }
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
 }
 
+function pruneOldSnapshots(activeDay) {
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(`${SNAPSHOT_PREFIX}:`) && !key.endsWith(`:${activeDay}`)) {
+        localStorage.removeItem(key);
+      }
+    }
+  } catch {}
+}
+
+/* ---- Boot ---- */
 init();
