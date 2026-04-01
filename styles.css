@@ -591,3 +591,107 @@ p { margin: 0; }
   .zone-stats { grid-template-columns: repeat(2, 1fr); }
   .content-wrap { padding: 1rem 0.75rem 2rem; }
 }
+
+/* ---- SENSOR MAP MARKERS ---- */
+.sensor-marker, .forecast-icon, .launch-icon { background: transparent !important; border: none !important; }
+
+.sm-pin {
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff;
+  font-family: var(--ff-ui);
+  font-weight: 700;
+  font-size: 0.72rem;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+}
+
+.fc-pin {
+  width: 26px; height: 26px;
+  border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff;
+  font-family: var(--ff-ui);
+  font-weight: 700;
+  font-size: 0.6rem;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+}
+.fc-pin.inner { background: var(--navy-mid); }
+.fc-pin.outer { background: var(--navy); }
+.fc-pin.sat { background: #8b5cf6; }
+
+.launch-pin {
+  color: var(--navy);
+  font-size: 1rem;
+  text-align: center;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.3));
+}
+
+/* ---- SENSOR POPUPS ---- */
+.sensor-popup-inner {
+  font-family: var(--ff-ui);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--ink);
+}
+.sensor-popup-inner strong { color: var(--ink); }
+.sensor-popup-inner a { color: var(--water); }
+
+.leaflet-popup-content-wrapper {
+  border-radius: 8px !important;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15) !important;
+}
+
+/* Zone tooltip */
+.zone-tooltip {
+  font-family: var(--ff-ui) !important;
+  font-size: 0.78rem !important;
+  font-weight: 600 !important;
+  border-radius: 6px !important;
+  padding: 4px 8px !important;
+}
+
+/* ---- REPORT SOURCE BADGES ---- */
+.source-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0.6rem 0;
+}
+
+.src-badge {
+  font-family: var(--ff-ui);
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.src-ok { background: var(--go-bg); color: var(--go); }
+.src-err { background: var(--nogo-bg); color: var(--nogo); }
+.src-warn { background: var(--caution-bg); color: var(--caution); }
+
+/* ---- REPORT TAGS ---- */
+.report-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.35rem;
+}
+
+.tag {
+  font-family: var(--ff-ui);
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 0.15rem 0.4rem;
+  border-radius: 999px;
+  background: var(--cream);
+  color: var(--ink-soft);
+  border: 1px solid var(--sand);
+}
+
+/* ---- SIGNAL COLORS ---- */
+.sig-pos { color: var(--go); font-weight: 700; }
+.sig-neg { color: var(--nogo); font-weight: 700; }
+.sig-mix { color: var(--caution); font-weight: 700; }
