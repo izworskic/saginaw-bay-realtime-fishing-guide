@@ -95,18 +95,20 @@ function renderSensorsOnMap(data) {
 
   // Marine forecast markers
   if (data.marineForecast) {
-    if (data.marineForecast.innerBay?.forecast) {
+    if (data.marineForecast.innerBay && !data.marineForecast.innerBay.error) {
+      const ib = data.marineForecast.innerBay;
       const m = L.marker([43.68, -83.78], {
-        icon: L.divIcon({ className: "forecast-icon", html: '<div class="fc-pin inner">IB</div>', iconSize: [28, 28], iconAnchor: [14, 14] }),
+        icon: L.divIcon({ className: "forecast-icon", html: `<div class="fc-pin inner${ib.advisory?" fc-alert":""}">IB</div>`, iconSize: [28, 28], iconAnchor: [14, 14] }),
       }).addTo(map);
-      m.bindPopup(`<div class="sensor-popup-inner"><strong>Inner Saginaw Bay Forecast</strong><br><em>${esc(data.marineForecast.innerBay.currentPeriod || "")}</em><br>${esc(data.marineForecast.innerBay.forecast || "No forecast")}</div>`, { maxWidth: 300 });
+      m.bindPopup(`<div class="sensor-popup-inner"><strong>Inner Saginaw Bay</strong>${ib.advisory?`<br><span style="color:#b84040;font-weight:700">${esc(ib.advisory)}</span>`:""}${ib.today?`<br><strong>Today:</strong> ${esc(ib.today.slice(0,250))}`:""}${ib.tonight?`<br><strong>Tonight:</strong> ${esc(ib.tonight.slice(0,250))}`:""}${!ib.today&&ib.forecast?`<br>${esc(ib.forecast.slice(0,400))}`:""}</div>`, { maxWidth: 320 });
       mapLayers.sensors.push(m);
     }
-    if (data.marineForecast.outerBay?.forecast) {
+    if (data.marineForecast.outerBay && !data.marineForecast.outerBay.error) {
+      const ob = data.marineForecast.outerBay;
       const m = L.marker([43.95, -83.62], {
-        icon: L.divIcon({ className: "forecast-icon", html: '<div class="fc-pin outer">OB</div>', iconSize: [28, 28], iconAnchor: [14, 14] }),
+        icon: L.divIcon({ className: "forecast-icon", html: `<div class="fc-pin outer${ob.advisory?" fc-alert":""}">OB</div>`, iconSize: [28, 28], iconAnchor: [14, 14] }),
       }).addTo(map);
-      m.bindPopup(`<div class="sensor-popup-inner"><strong>Outer Saginaw Bay Forecast</strong><br><em>${esc(data.marineForecast.outerBay.currentPeriod || "")}</em><br>${esc(data.marineForecast.outerBay.forecast || "No forecast")}</div>`, { maxWidth: 300 });
+      m.bindPopup(`<div class="sensor-popup-inner"><strong>Outer Saginaw Bay</strong>${ob.advisory?`<br><span style="color:#b84040;font-weight:700">${esc(ob.advisory)}</span>`:""}${ob.today?`<br><strong>Today:</strong> ${esc(ob.today.slice(0,250))}`:""}${ob.tonight?`<br><strong>Tonight:</strong> ${esc(ob.tonight.slice(0,250))}`:""}${!ob.today&&ob.forecast?`<br>${esc(ob.forecast.slice(0,400))}`:""}</div>`, { maxWidth: 320 });
       mapLayers.sensors.push(m);
     }
   }

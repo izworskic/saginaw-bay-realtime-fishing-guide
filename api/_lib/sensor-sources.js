@@ -298,30 +298,43 @@ async function fetchCoOps(stationId) {
    NWS Marine Forecasts - Inner and Outer Saginaw Bay
    ================================================================ */
 async function fetchNwsMarineZone(zoneId, zoneName) {
-  const url = `https://api.weather.gov/zones/forecast/${zoneId}/forecast`;
+  // NWS API doesn't support marine forecasts, use NDBC text page
+  const url = "https://www.ndbc.noaa.gov/data/Forecasts/FZUS53.KDTX.html";
 
   try {
-    const data = await fetchJson(url, {
-      headers: {
-        "User-Agent": "SaginawBayFishingHub/2.0 (saginawbay.chrisizworski.com)",
-        Accept: "application/geo+json",
-      },
-    });
+    const html = await fetchText(url);
+    const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
 
-    const periods = data?.properties?.periods || [];
-    const current = periods[0] || {};
-    const next = periods[1] || {};
+    // Parse zone-specific section from the Detroit NWS marine forecast
+    const zonePatterns = {
+      "LHZ422": /Inner Saginaw Bay[\s\S]*?(?=(?:Outer Saginaw|LHZ|Port Austin|Harbor Beach|$))/i,
+      "LHZ421": /Outer Saginaw Bay[\s\S]*?(?=(?:Inner Saginaw|LHZ|Port Austin|Harbor Beach|$))/i,
+    };
+
+    const pattern = zonePatterns[zoneId];
+    if (!pattern) return { zoneId, zoneName, error: "Unknown zone", source: "nws-marine" };
+
+    const match = text.match(pattern);
+    if (!match) return { zoneId, zoneName, error: "Zone not found in forecast", source: "nws-marine" };
+
+    const forecastText = match[0].trim().slice(0, 800);
+
+    // Extract advisory info
+    const advisory = forecastText.match(/(?:SMALL CRAFT|GALE|STORM)[\w\s]*(?:ADVISORY|WARNING)[^.]*\./i);
+
+    // Extract TODAY section
+    const todayMatch = forecastText.match(/TODAY\s+(.*?)(?=TONIGHT|$)/is);
+    const tonightMatch = forecastText.match(/TONIGHT\s+(.*?)(?=FRIDAY|SATURDAY|SUNDAY|MONDAY|TUESDAY|WEDNESDAY|THURSDAY|$)/is);
 
     return {
       zoneId,
       zoneName,
-      currentPeriod: current.name || null,
-      forecast: current.detailedForecast || null,
-      shortForecast: current.shortForecast || null,
-      nextPeriod: next.name || null,
-      nextForecast: next.detailedForecast || null,
+      advisory: advisory ? advisory[0].trim() : null,
+      forecast: forecastText.slice(0, 600),
+      today: todayMatch ? todayMatch[1].trim().slice(0, 300) : null,
+      tonight: tonightMatch ? tonightMatch[1].trim().slice(0, 300) : null,
       fetchedAt: new Date().toISOString(),
-      source: "nws-marine",
+      source: "nws-marine-ndbc",
     };
   } catch (err) {
     return { zoneId, zoneName, error: err.message, source: "nws-marine" };
@@ -431,7 +444,12 @@ async function safeCall(fn, label) {
 }
 
 function formatCoOpsDate(d) {
-  return d.toISOString().slice(0, 16).replace(/[-T:]/g, "").slice(0, 12);
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  const h = String(d.getUTCHours()).padStart(2, "0");
+  const min = String(d.getUTCMinutes()).padStart(2, "0");
+  return `${y}${m}${day} ${h}:${min}`;
 }
 
 function degToCardinal(deg) {

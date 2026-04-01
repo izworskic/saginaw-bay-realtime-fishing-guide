@@ -620,6 +620,8 @@ p { margin: 0; }
 .fc-pin.inner { background: var(--navy-mid); }
 .fc-pin.outer { background: var(--navy); }
 .fc-pin.sat { background: #8b5cf6; }
+.fc-pin.fc-alert { background: var(--nogo); animation: pulse-alert 1.5s infinite; }
+@keyframes pulse-alert { 0%,100%{opacity:1} 50%{opacity:0.7} }
 
 .launch-pin {
   color: var(--navy);
