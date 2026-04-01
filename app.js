@@ -201,36 +201,28 @@ function renderTripPlan(sensorData){
   const rd=sensorData?.readings||{};
   const sblm4=rd["ndbc-sblm4"]||{};
   const river=rd["usgs-04157005"]||{};
-  const titt=rd["usgs-04156000"]||{};
   const level=rd["noaa-9075035"]||{};
   const mf=sensorData?.marineForecast?.innerBay||{};
-
-  // Bay call
   const bc=d?.bayCall||{};
   const callCls=bc.goNoGo==="GO"?"tp-go":bc.goNoGo==="CAUTION"?"tp-caut":"tp-nogo";
-
-  // Best launch
   const bestLaunch=(d?.launches||[])[0];
   const topZone=(d?.zones||[])[0];
 
-  let h=`<div class="tp-call ${callCls}">${esc(bc.label||"Loading...")}</div>`;
+  let h=`<span class="tp-call ${callCls}">${esc(bc.label||"Loading...")}</span>`;
+  if(mf.advisory)h+=`<span class="tp-alert">${esc(mf.advisory.slice(0,60))}</span>`;
 
-  if(mf.advisory)h+=`<div class="tp-alert">${esc(mf.advisory.slice(0,70))}</div>`;
-
-  h+=`<div class="tp-grid">`;
-  if(sblm4.windMph!=null)h+=`<div class="tp-stat"><span class="tp-k">Wind</span><span class="tp-v">${Math.round(sblm4.windMph)} mph ${sblm4.windDir||""}</span></div>`;
-  if(river.waterTempF!=null)h+=`<div class="tp-stat"><span class="tp-k">River</span><span class="tp-v">${Math.round(river.waterTempF)}\u00B0 / ${river.flowCfs?river.flowCfs.toLocaleString()+"cfs":""}</span></div>`;
-  if(level.waterLevelFtIGLD!=null)h+=`<div class="tp-stat"><span class="tp-k">Level</span><span class="tp-v">${level.waterLevelFtIGLD}ft ${level.trendLabel||""}</span></div>`;
+  h+=`<span class="tp-grid">`;
+  if(sblm4.windMph!=null)h+=`<span class="tp-stat"><span class="tp-k">Wind</span><span class="tp-v">${Math.round(sblm4.windMph)} mph ${sblm4.windDir||""}</span></span>`;
+  if(river.waterTempF!=null)h+=`<span class="tp-stat"><span class="tp-k">River</span><span class="tp-v">${Math.round(river.waterTempF)}\u00B0 ${river.flowCfs?river.flowCfs.toLocaleString()+"cfs":""}</span></span>`;
+  if(level.waterLevelFtIGLD!=null)h+=`<span class="tp-stat"><span class="tp-k">Level</span><span class="tp-v">${level.waterLevelFtIGLD}ft ${level.trendLabel||""}</span></span>`;
   const c=d?.conditions||{};
-  if(c.smallBoatWindowHours!=null)h+=`<div class="tp-stat"><span class="tp-k">Window</span><span class="tp-v">${c.smallBoatWindowHours} hrs</span></div>`;
-  h+=`</div>`;
+  if(c.smallBoatWindowHours!=null)h+=`<span class="tp-stat"><span class="tp-k">Window</span><span class="tp-v">${c.smallBoatWindowHours}hrs</span></span>`;
+  h+=`</span>`;
 
-  if(bestLaunch&&bestLaunch.score>0)h+=`<div class="tp-rec"><strong>Launch:</strong> ${esc(bestLaunch.name)} (${bestLaunch.score})</div>`;
-  if(topZone&&topZone.tripScore>0)h+=`<div class="tp-rec"><strong>Zone:</strong> ${esc(topZone.name)} (${topZone.tripScore})</div>`;
-  if(topZone?.action?.technique)h+=`<div class="tp-tactic">${esc(topZone.action.technique)}</div>`;
-
-  // Satellite SST link
-  if(sensorData?.satellite?.imageUrl)h+=`<a href="${esc(sensorData.satellite.imageUrl)}" target="_blank" class="tp-link">Satellite SST Map</a>`;
+  if(bestLaunch&&bestLaunch.score>0)h+=`<span class="tp-rec"><strong>Launch:</strong> ${esc(bestLaunch.name)} (${bestLaunch.score})</span>`;
+  if(topZone&&topZone.tripScore>0)h+=`<span class="tp-rec"><strong>Zone:</strong> ${esc(topZone.name)} (${topZone.tripScore})</span>`;
+  if(topZone?.action?.technique)h+=`<span class="tp-tactic">${esc(topZone.action.technique)}</span>`;
+  if(sensorData?.satellite?.imageUrl)h+=`<a href="${esc(sensorData.satellite.imageUrl)}" target="_blank" class="tp-link">SST Map</a>`;
 
   el.innerHTML=h;
   el.classList.remove("collapsed");
