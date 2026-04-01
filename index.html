@@ -7,143 +7,82 @@
   <meta name="description" content="Real-time Saginaw Bay fishing conditions with zone scoring, boat launch rankings, and go/no-go decisions for walleye and perch anglers.">
   <meta name="keywords" content="Saginaw Bay fishing, walleye fishing Michigan, perch fishing Saginaw Bay, boat launches Saginaw Bay, fishing conditions today">
   <link rel="canonical" href="https://saginawbay.chrisizworski.com/">
-  <meta property="og:title" content="Saginaw Bay Fishing Report: Today's Conditions">
+  <meta property="og:title" content="Saginaw Bay Fishing Report">
   <meta property="og:description" content="Real-time zone scoring, launch rankings, and fishing conditions for Saginaw Bay walleye and perch anglers.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://saginawbay.chrisizworski.com/">
-  <meta property="og:site_name" content="Saginaw Bay Fishing Hub">
-  <meta name="twitter:card" content="summary_large_image">
   <meta name="author" content="Chris Izworski">
-
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
   <link rel="stylesheet" href="/styles.css">
-
   <script type="application/ld+json">
-  {
-    "@context": "https://schema.org",
-    "@type": "WebSite",
-    "name": "Saginaw Bay Fishing Hub",
-    "url": "https://saginawbay.chrisizworski.com",
-    "description": "Real-time fishing conditions, zone scoring, and launch rankings for Saginaw Bay.",
-    "author": {
-      "@type": "Person",
-      "name": "Chris Izworski",
-      "url": "https://chrisizworski.com"
-    }
-  }
+  {"@context":"https://schema.org","@type":"WebSite","name":"Saginaw Bay Fishing Hub","url":"https://saginawbay.chrisizworski.com","author":{"@type":"Person","name":"Chris Izworski","url":"https://chrisizworski.com"}}
   </script>
 </head>
 <body>
 
+  <!-- COMPACT NAV -->
   <nav class="site-nav">
     <div class="nav-inner">
       <a href="/" class="nav-brand">Saginaw Bay <span class="brand-accent">Fishing Hub</span></a>
       <div class="nav-links">
-        <a href="/" class="nav-link active">Today</a>
+        <a href="/" class="nav-link active">Report</a>
         <a href="/walleye" class="nav-link">Walleye</a>
         <a href="/perch" class="nav-link">Perch</a>
         <a href="/zones" class="nav-link">Zones</a>
         <a href="/launches" class="nav-link">Launches</a>
-        <a href="/forecast" class="nav-link">7-Day</a>
       </div>
     </div>
   </nav>
 
-  <header class="page-header">
-    <div class="header-inner">
-      <div class="header-text">
-        <h1>Saginaw Bay Fishing Report</h1>
-        <p class="header-sub">Real-time conditions, zone scoring, and launch rankings for Michigan's premier walleye water.</p>
-      </div>
-      <div class="header-meta">
-        <div id="bay-call-badge" class="bay-call-badge loading">
-          <span class="call-label">Loading...</span>
-        </div>
-        <p id="updated-at" class="updated-stamp">Fetching conditions...</p>
-      </div>
-    </div>
-  </header>
-
   <main>
+    <!-- WEEKEND BRIEFING: the whole point of the site -->
+    <section id="briefing" class="briefing">
+      <div class="br-top">
+        <div id="br-call" class="br-call loading">Loading...</div>
+        <div class="br-species">
+          <button data-species="walleye" class="sp-btn active">Walleye</button>
+          <button data-species="perch" class="sp-btn">Perch</button>
+          <button data-species="mixed" class="sp-btn">Mixed</button>
+        </div>
+      </div>
+      <div id="br-body" class="br-body">
+        <p class="br-loading">Fetching conditions...</p>
+      </div>
+    </section>
+
+    <!-- MAP: nautical chart default, full width -->
     <section class="map-section">
       <div id="bay-map" class="bay-map"></div>
       <div class="map-controls">
-        <button id="toggle-chart" class="map-btn" title="Show depth contours">Depth Chart</button>
+        <button id="toggle-base" class="map-btn active">Nautical</button>
+        <button id="toggle-road" class="map-btn">Road</button>
       </div>
     </section>
-    <div id="trip-plan" class="trip-plan collapsed"></div>
 
+    <!-- DETAILS -->
     <div class="content-wrap">
-      <div class="summary-row">
-        <div class="summary-card hero-card">
-          <h2>Today's Bay Call</h2>
-          <div id="hero-panel">
-            <div class="hero-metrics">
-              <div class="metric-block">
-                <span class="metric-label">Best Zone</span>
-                <span id="hero-best" class="metric-val">--</span>
-              </div>
-              <div class="metric-block">
-                <span class="metric-label">Avoid / Caution</span>
-                <span id="hero-avoid" class="metric-val">--</span>
-              </div>
-              <div class="metric-block">
-                <span class="metric-label">Confidence</span>
-                <span id="hero-confidence" class="metric-val">--</span>
-              </div>
-            </div>
-            <div id="hero-rationale" class="rationale">
-              <p class="muted">Loading decision drivers...</p>
-            </div>
-          </div>
-        </div>
-
-        <div class="summary-card species-card">
-          <h2>Target Species</h2>
-          <div class="species-buttons" id="species-buttons">
-            <button type="button" class="species-btn active" data-species="walleye">Walleye</button>
-            <button type="button" class="species-btn" data-species="perch">Perch</button>
-            <button type="button" class="species-btn" data-species="mixed">Mixed Bag</button>
-          </div>
-          <div class="captain-note-wrap">
-            <h3>AI Captain Note</h3>
-            <p id="captain-note" class="muted">Tap below to generate an optional AI summary.</p>
-            <button type="button" class="btn-sm" data-action="generate-ai-note">Generate Note</button>
-          </div>
-        </div>
-      </div>
-
-      <section class="section-block" id="conditions-section">
-        <h2>Current Conditions</h2>
-        <div id="conditions-grid" class="conditions-grid">
-          <p class="muted">Loading conditions...</p>
-        </div>
+      <section class="section-block">
+        <h2>Conditions</h2>
+        <div id="conditions-grid" class="conditions-grid"></div>
       </section>
 
-      <section class="section-block" id="zones-section">
+      <section class="section-block">
         <h2>Zone Rankings</h2>
-        <p class="section-sub">Scored by a weighted model: safety, fishability, recent bite signal, and access friction.</p>
-        <div id="zones-grid" class="zones-grid">
-          <p class="muted">Loading zone scores...</p>
-        </div>
+        <div id="zones-grid" class="zones-grid"></div>
       </section>
 
-      <section class="section-block" id="launches-section">
+      <section class="section-block">
         <div class="two-col">
           <div>
-            <h2>Launch Rankings</h2>
-            <div id="launches-list" class="card-stack">
-              <p class="muted">Loading launches...</p>
-            </div>
+            <h2>Launches</h2>
+            <div id="launches-list" class="card-stack"></div>
           </div>
           <div>
-            <h2>Fishing Reports Feed</h2>
-            <div id="reports-list" class="card-stack">
-              <p class="muted">Loading reports...</p>
-            </div>
+            <h2>Reports</h2>
+            <div id="reports-list" class="card-stack"></div>
           </div>
         </div>
       </section>
@@ -151,25 +90,24 @@
       <section class="section-block seo-prose">
         <h2>Fishing Saginaw Bay: What You Need to Know</h2>
         <p>Saginaw Bay is one of the most productive walleye fisheries in the Great Lakes system. Stretching roughly 60 miles along Michigan's eastern shoreline, the bay offers diverse structure: shallow inner flats, the Saginaw River mouth plume, named reef complexes, and deep outer water that transitions into Lake Huron proper. Wind direction and speed are the dominant variables for any small-boat angler planning a trip.</p>
-        <p>This report pulls live weather, marine, and water level data from NOAA, the National Weather Service, and Open-Meteo. The scoring model weights safety (wind exposure, wave height, active advisories), fishability (water temperature relative to species preference, temperature trends), recent bite signal from available reports, and access friction for each zone. The result is a single go/no-go recommendation and a ranked zone list updated throughout the day.</p>
-        <p>Walleye fishing on Saginaw Bay peaks during the spring run (late April through June) and again in fall. Perch fishing is strongest in late summer and early fall. Conditions shift quickly on the bay. A morning window can close by midday when afternoon thermals push waves above the small-boat comfort threshold. Always check the small-boat window estimate before committing to a long run.</p>
+        <p>This report pulls live weather, marine, and water level data from NOAA, the National Weather Service, and Open-Meteo. The scoring model weights safety (wind exposure, wave height, active advisories), fishability (water temperature relative to species preference, temperature trends), recent bite signal from available reports, and access friction for each zone.</p>
+        <p>Walleye fishing on Saginaw Bay peaks during the spring run (late April through June) and again in fall. Perch fishing is strongest in late summer and early fall. Conditions shift quickly on the bay. Always check the small-boat window estimate before committing to a long run.</p>
         <h3>Key Fishing Zones</h3>
-        <p>The <a href="/zones">West Side</a> runs from Bay City north toward Au Gres and offers protection from southwest winds. The East Side (Thumb shore) includes Sebewaing and Quanicassee, better in easterly patterns. The Inner Bay is the shallowest, most protected water, ideal for short-window trips. The Outer Bay opens to Lake Huron and carries the most exposure but often holds the best fish. The River Mouth is a transition zone where plume clarity drives activity. Named Reefs and the Shipping Channel are structure-oriented zones that reward precise boat positioning.</p>
-        <h3>Popular Boat Launches</h3>
-        <p><a href="/launches">Linwood Beach Marina</a> provides fast access to the west side and inner bay. Au Gres Harbor is the go-to for west-side and outer transitions. On the east side, Sebewaing Harbor and the Quanicassee DNR Launch serve the Thumb shoreline. Bay City State Park and Essexville offer protected, close-in options near the river mouth.</p>
+        <p>The <a href="/zones">West Side</a> runs from Bay City north toward Au Gres. The East Side (Thumb shore) includes Sebewaing and Quanicassee. The Inner Bay is the shallowest, most protected water. The Outer Bay opens to Lake Huron. The River Mouth is a transition zone where plume clarity drives activity. Named Reefs and the Shipping Channel reward precise positioning.</p>
+        <h3>Popular Launches</h3>
+        <p><a href="/launches">Linwood Beach Marina</a> provides fast west side access. Au Gres Harbor serves the outer transitions. Sebewaing Harbor and Quanicassee DNR serve the Thumb. Bay City State Park offers protected options near the river mouth.</p>
       </section>
     </div>
   </main>
 
   <footer class="site-footer">
     <div class="footer-inner">
-      <p class="footer-brand">Saginaw Bay Fishing Hub is part of the <a href="https://chrisizworski.com">chrisizworski.com</a> network.</p>
+      <p class="footer-brand">Part of the <a href="https://chrisizworski.com">chrisizworski.com</a> network.</p>
       <div class="footer-links">
         <a href="https://trout.chrisizworski.com">Michigan Trout Report</a>
-        <a href="https://chrisizworski.com/michigan-trout-streams/">Michigan Trout Streams</a>
         <a href="https://freighterviewfarms.com">Freighter View Farms</a>
       </div>
-      <p class="footer-disclaimer">Data from NOAA, NWS, and Open-Meteo. Not a substitute for on-water judgment. Always check marine forecasts before launching.</p>
+      <p class="footer-disclaimer">Data from NOAA, NWS, Open-Meteo. Not a substitute for on-water judgment.</p>
     </div>
   </footer>
 
