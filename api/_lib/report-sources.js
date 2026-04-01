@@ -92,6 +92,7 @@ async function fetchSaginawBayCom() {
     const paragraphs = textContent.split(/\n+/).filter(p => p.trim().length > 40);
 
     for (const para of paragraphs.slice(0, 10)) {
+      if (isBoilerplate(para)) continue;
       const lower = para.toLowerCase();
       if (lower.includes("walleye") || lower.includes("perch") || lower.includes("fishing") ||
           lower.includes("caught") || lower.includes("anglers")) {
@@ -136,6 +137,7 @@ async function fetchFishingBooker() {
     const chunks = textContent.split(/(?:Continue reading|Loading Fish Calendar)/i).filter(c => c.trim().length > 50);
 
     for (const chunk of chunks.slice(0, 8)) {
+      if (isBoilerplate(chunk)) continue;
       const lower = chunk.toLowerCase();
       if (lower.includes("fow") || lower.includes("walleye") || lower.includes("limit") ||
           lower.includes("saginaw bay") || lower.includes("trolling") || lower.includes("crawlers")) {
@@ -179,6 +181,7 @@ async function fetchLinwoodMarina() {
     const paragraphs = textContent.split(/\n+/).filter(p => p.trim().length > 30);
 
     for (const para of paragraphs.slice(0, 10)) {
+      if (isBoilerplate(para)) continue;
       const lower = para.toLowerCase();
       if (lower.includes("walleye") || lower.includes("perch") || lower.includes("fishing") ||
           lower.includes("water") || lower.includes("fow")) {
@@ -222,6 +225,7 @@ async function fetchSportsmansWarehouse() {
     const paragraphs = textContent.split(/\n+/).filter(p => p.trim().length > 40);
 
     for (const para of paragraphs.slice(0, 10)) {
+      if (isBoilerplate(para)) continue;
       const lower = para.toLowerCase();
       if (lower.includes("walleye") || lower.includes("perch") || lower.includes("saginaw")) {
         const parsed = parseReportText(para, "sportsmans-warehouse", "Sportsman's Warehouse");
@@ -264,6 +268,7 @@ async function fetchFishermansDigest() {
     const paragraphs = textContent.split(/\n+/).filter(p => p.trim().length > 40);
 
     for (const para of paragraphs.slice(0, 10)) {
+      if (isBoilerplate(para)) continue;
       const lower = para.toLowerCase();
       if (lower.includes("saginaw") || lower.includes("walleye") || lower.includes("bay")) {
         const parsed = parseReportText(para, "fishermans-digest", "Great Lakes Fisherman's Digest");
@@ -334,8 +339,9 @@ async function fetchAllReports() {
    PARSING HELPERS
    ================================================================ */
 function parseReportText(text, sourceId, sourceName) {
-  const clean = text.replace(/\s+/g, " ").trim();
-  if (clean.length < 20) return [];
+  let clean = text.replace(/\s+/g, " ").trim();
+  clean = cleanSummary(clean);
+  if (clean.length < 30 || isBoilerplate(clean)) return [];
 
   const zones = detectZones(clean);
   const species = detectSpecies(clean);
@@ -358,8 +364,9 @@ function parseReportText(text, sourceId, sourceName) {
 }
 
 function parseCharterReport(text) {
-  const clean = text.replace(/\s+/g, " ").trim();
-  if (clean.length < 30) return null;
+  let clean = text.replace(/\s+/g, " ").trim();
+  clean = cleanSummary(clean);
+  if (clean.length < 30 || isBoilerplate(clean)) return null;
 
   const zones = detectZones(clean);
   const species = detectSpecies(clean);
@@ -475,6 +482,11 @@ function stripHtml(html) {
   return html
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, "")
+    .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, "")
+    .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, "")
+    .replace(/<aside[^>]*>[\s\S]*?<\/aside>/gi, "")
+    .replace(/<form[^>]*>[\s\S]*?<\/form>/gi, "")
     .replace(/<[^>]+>/g, " ")
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
@@ -484,6 +496,43 @@ function stripHtml(html) {
     .replace(/&nbsp;/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+/** Strip common leading page-title junk from scraped text */
+function cleanSummary(text) {
+  // Remove common page title prefixes
+  const prefixes = [
+    /^(?:Saginaw Bay Area )?(?:Weekly )?Fishing Reports?.*?(?:Skip to (?:content|primary)[\w\s]*)/i,
+    /^Daily (?:Saginaw Bay|Bay City) Fishing Reports?\s*\([^)]+\)\s*/i,
+    /^Weekly fishing report:?\s*\w+\s+\d+,?\s*\d*\s*/i,
+    /^(?:Saginaw Bay (?:Area )?)?(?:Fishers? and Boaters? )?Resources?.*?(?:Lake Huron.*?:)/i,
+    /^(?:Great Lakes (?:Bay Region )?)?Fishing Report\s*/i,
+    /^Fishing Report (?:Saginaw Bay|Captain)\s*/i,
+    /^Saginaw Bay\s+(?:fishing\s+)?(?:report\s+)?(?:–|-)\s*/i,
+    /^data-event[^"]*"[^"]*"\s*/i,
+  ];
+  let result = text;
+  for (const re of prefixes) {
+    result = result.replace(re, "");
+  }
+  return result.trim();
+}
+
+/** Filter out paragraphs that are navigation/boilerplate */
+function isBoilerplate(text) {
+  const lower = text.toLowerCase();
+  const junk = [
+    "skip to content", "skip to primary", "visitor center", "education programs",
+    "buy and apply", "privacy policy", "recreation passport", "cookie",
+    "sign up", "subscribe", "login", "log in", "list your", "data-event",
+    "copyright", "all rights reserved", "terms of service", "powered by",
+    "michigan dnr pocket", "hatchery visitor", "search is currently",
+    "forest carbon", "grants go to", "click the box", "learn more",
+    "we administer grants", "find a great trail", "shooting and archery",
+    "snowmobile trail", "business registration", "forum registration",
+    "tow boatu.s.", "boatus.com", "membership", "Loading Fish Calendar",
+  ];
+  return junk.some(j => lower.includes(j));
 }
 
 function hashCode(str) {
