@@ -500,7 +500,6 @@ function stripHtml(html) {
 
 /** Strip common leading page-title junk from scraped text */
 function cleanSummary(text) {
-  // Remove common page title prefixes
   const prefixes = [
     /^(?:Saginaw Bay Area )?(?:Weekly )?Fishing Reports?.*?(?:Skip to (?:content|primary)[\w\s]*)/i,
     /^Daily (?:Saginaw Bay|Bay City) Fishing Reports?\s*\([^)]+\)\s*/i,
@@ -510,6 +509,10 @@ function cleanSummary(text) {
     /^Fishing Report (?:Saginaw Bay|Captain)\s*/i,
     /^Saginaw Bay\s+(?:fishing\s+)?(?:report\s+)?(?:–|-)\s*/i,
     /^data-event[^"]*"[^"]*"\s*/i,
+    /^Fresh Saginaw Bay Fishing Reports.*?(?:See recent|Check out)[^.]*\.\s*/i,
+    /^Blog\s*\|\s*Linwood Beach Marina.*?(?:Our Blog|Skip to main content)\s*/i,
+    /^Skip to (?:main )?content\s*/i,
+    /^Our Blog\s*/i,
   ];
   let result = text;
   for (const re of prefixes) {
@@ -522,7 +525,7 @@ function cleanSummary(text) {
 function isBoilerplate(text) {
   const lower = text.toLowerCase();
   const junk = [
-    "skip to content", "skip to primary", "visitor center", "education programs",
+    "skip to content", "skip to primary", "skip to main", "visitor center", "education programs",
     "buy and apply", "privacy policy", "recreation passport", "cookie",
     "sign up", "subscribe", "login", "log in", "list your", "data-event",
     "copyright", "all rights reserved", "terms of service", "powered by",
@@ -531,6 +534,12 @@ function isBoilerplate(text) {
     "we administer grants", "find a great trail", "shooting and archery",
     "snowmobile trail", "business registration", "forum registration",
     "tow boatu.s.", "boatus.com", "membership", "Loading Fish Calendar",
+    "don't miss what's biting", "check out the latest catches",
+    "see recent", "finding the best local", "finding the best charter",
+    "cancel free of charge", "remaining balance",
+    "legitimacy: verification", "technicality: verification",
+    "we check thousands of charter", "book with fishingbooker",
+    "give me a call at", "book a trip",
   ];
   return junk.some(j => lower.includes(j));
 }
