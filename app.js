@@ -66,7 +66,7 @@ function initMap(){
 
   nauticalLayer=L.tileLayer("https://tileservice.charts.noaa.gov/tiles/50000_1/{z}/{x}/{y}.png",{
     attribution:'NOAA Charts | &copy; <a href="https://osm.org">OSM</a>',maxZoom:15});
-  roadLayer=L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",{
+  roadLayer=L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=cb1_2y8f_1_1ee5e3a872c91d0ebf5d7b88",{
     attribution:'&copy; <a href="https://osm.org">OSM</a> &copy; <a href="https://carto.com">CARTO</a>',
     maxZoom:15,subdomains:"abcd"});
 
