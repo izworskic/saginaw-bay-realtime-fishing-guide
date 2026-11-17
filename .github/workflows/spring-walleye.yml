@@ -1,0 +1,25 @@
+name: Spring Walleye Checks
+on:
+  push:
+    branches: [feature/spring-walleye-conditions-2027]
+  pull_request:
+    paths:
+      - "api/spring-walleye.js"
+      - "api/_lib/spring-walleye.js"
+      - "spring-walleye.js"
+      - "walleye.html"
+      - "styles.css"
+      - "tests/spring-walleye.test.js"
+      - ".github/workflows/spring-walleye.yml"
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: node --test tests/spring-walleye.test.js
+      - run: node --check api/_lib/spring-walleye.js
+      - run: node --check api/spring-walleye.js
+      - run: node --check spring-walleye.js
