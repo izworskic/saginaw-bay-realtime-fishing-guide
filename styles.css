@@ -616,3 +616,25 @@ p { margin: 0; }
 .pop-rpt { border-top:1px solid var(--card-border); padding-top:4px; margin-top:4px; }
 .pop-rpt p { font-size:0.74rem; }
 .leaflet-popup-content-wrapper { border-radius:8px !important; box-shadow:0 4px 16px rgba(0,0,0,0.15) !important; }
+
+/* Spring field desk: measured river context, not a fish-run announcement. */
+.spring-run{background:#fffdf8;border-radius:16px;padding:clamp(20px,4vw,36px);box-shadow:0 5px 24px rgba(26,46,59,.08);margin-bottom:24px}
+.spring-run-top{display:flex;gap:20px;align-items:start;justify-content:space-between;flex-wrap:wrap}
+.spring-eyebrow{font:700 .76rem var(--ff-ui);letter-spacing:.13em;color:#466876;margin-bottom:10px}
+.spring-run h2{font-size:clamp(1.6rem,3.8vw,2.5rem);margin-bottom:12px}
+.spring-intro{max-width:70ch;color:var(--ink-soft)}
+.spring-refresh{background:var(--navy);color:white;border:0;border-radius:8px;padding:11px 16px;cursor:pointer;font:700 .9rem var(--ff-ui)}
+.spring-refresh:disabled{opacity:.6;cursor:wait}
+.spring-refresh:focus-visible,.spring-source:focus-visible{outline:3px solid var(--water);outline-offset:3px}
+.spring-status{font:600 1.12rem var(--ff-ui);margin:24px 0 16px;color:var(--navy)}
+.spring-station-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,255px),1fr));gap:18px}
+.spring-station{border-top:4px solid var(--water);border-radius:8px;background:#f5f4ef;padding:20px}
+.spring-station h3{font-size:1.24rem;margin-bottom:12px}
+.spring-metric{font:700 clamp(1.5rem,3vw,2rem) var(--ff-ui);color:var(--navy)}
+.spring-note,.spring-reading{font:400 .93rem/1.6 var(--ff-ui);color:var(--ink-soft)}
+.spring-reading{margin:4px 0}
+.spring-source{display:inline-block;margin-top:10px;font:700 .88rem var(--ff-ui);text-decoration:underline}
+.spring-next{margin-top:22px;padding-top:18px;border-top:1px solid var(--sand)}
+.spring-next strong{display:block;font:700 1rem var(--ff-ui);margin-bottom:6px}
+.spring-next p{max-width:76ch}
+@media(max-width:600px){.spring-run{padding:20px}.spring-refresh{width:100%}}
