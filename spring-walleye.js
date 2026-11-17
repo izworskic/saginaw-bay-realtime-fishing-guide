@@ -6,6 +6,11 @@
   const stations = document.getElementById("spring-run-stations");
   const updated = document.getElementById("spring-run-updated");
   const refresh = document.getElementById("spring-run-refresh");
+  const selector = document.getElementById("spring-region-select");
+  const reportList = document.getElementById("spring-reports");
+  const reportContext = document.getElementById("spring-evidence-status");
+  const authority = document.getElementById("spring-official-report");
+  let latest = null;
 
   function el(tag, className, value) {
     const node = document.createElement(tag);
@@ -20,10 +25,13 @@
       timeZoneName: "short"
     }).format(new Date(iso));
   }
-  function render(data) {
-    heading.textContent = data.heading || "Conditions unavailable";
+  function displayRegion() {
+    if (!latest) return;
+    const selected = latest.regions?.find(region => region.id === selector.value);
+    if (!selected) return;
+    heading.textContent = selected.name + ": " + selected.summary;
     stations.replaceChildren();
-    for (const station of data.stations || []) {
+    for (const station of selected.stations || []) {
       const card = el("article", "spring-station");
       const name = el("h3", "", station.river);
       const temp = el("p", "spring-metric", station.waterTempF == null ? "No current temperature" : station.waterTempF.toFixed(1) + " °F");
@@ -38,7 +46,37 @@
       card.append(name,temp,band,flow,time,explanation,link);
       stations.append(card);
     }
-    updated.textContent = "Checked " + observedAt(data.generatedAt) + ". These readings do not verify fish presence, spawning, legal access, or fishing regulations.";
+    reportList.replaceChildren();
+    for (const report of selected.reports || []) {
+      const item = el("li", "spring-report");
+      const date = el("span", "spring-report-date", report.issuedAt + " | " + report.status.replaceAll("-", " "));
+      const link = el("a", "", report.label);
+      link.href = report.url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      const finding = el("p", "spring-note", report.finding);
+      item.append(date, link, finding);
+      reportList.append(item);
+    }
+    if (!reportList.children.length) {
+      reportList.append(el("li","spring-note","No source-reviewed fishery report has been added for this river."));
+    }
+    reportContext.textContent = selected.statusNote;
+    authority.href = selected.reportsUrl;
+    authority.textContent = "Check " + selected.authority + " fishery reports";
+    updated.textContent = "Station fetch " + observedAt(latest.generatedAt) + ". Water readings do not verify fish presence, spawning, access, or fishing regulations.";
+  }
+  function render(data) {
+    latest = data;
+    const previous = selector.value;
+    selector.replaceChildren();
+    for (const region of data.regions || []) {
+      const option = el("option", "", region.name);
+      option.value = region.id;
+      selector.appendChild(option);
+    }
+    selector.value = (data.regions || []).some(region=>region.id === previous) ? previous : "saginaw";
+    displayRegion();
   }
   async function load() {
     refresh.disabled = true;
@@ -46,16 +84,19 @@
     try {
       const response = await fetch("/api/spring-walleye", {headers: {Accept: "application/json"}});
       if (!response.ok) throw new Error("Source request failed");
-      const data = await response.json();
-      render(data);
+      render(await response.json());
     } catch {
-      heading.textContent = "Live measurements could not be retrieved";
-      stations.replaceChildren(el("p","spring-note","Check the official USGS station links below before planning."));
-      updated.textContent = "No substitute river temperatures were generated.";
+      heading.textContent = latest ? "Could not refresh current observations. Previously loaded data may be stale." :
+        "Live measurements could not be retrieved";
+      if (!latest) {
+        stations.replaceChildren(el("p","spring-note","Use the official USGS station links below before planning."));
+        updated.textContent = "No substitute river temperatures were generated.";
+      }
     } finally {
       refresh.disabled = false;
     }
   }
-  refresh.addEventListener("click", load);
+  selector.addEventListener("change",displayRegion);
+  refresh.addEventListener("click",load);
   load();
 })();
