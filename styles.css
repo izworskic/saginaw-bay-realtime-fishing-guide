@@ -638,3 +638,15 @@ p { margin: 0; }
 .spring-next strong{display:block;font:700 1rem var(--ff-ui);margin-bottom:6px}
 .spring-next p{max-width:76ch}
 @media(max-width:600px){.spring-run{padding:20px}.spring-refresh{width:100%}}
+
+/* Four-corridor spring source desk */
+.spring-region-label{display:block;font:700 .85rem var(--ff-ui);margin-top:20px;margin-bottom:6px}
+.spring-region-select{width:min(100%,420px);background:#fff;padding:12px;font:600 1rem var(--ff-ui);border:1px solid #7c949b;border-radius:8px;color:var(--navy)}
+.spring-region-select:focus-visible{outline:3px solid var(--water);outline-offset:3px}
+.spring-evidence{margin-top:25px;padding:20px;background:#eff2ed;border-radius:8px}
+.spring-evidence h3{font-size:1.25rem;margin-bottom:10px}
+.spring-evidence ul{list-style:none;margin:12px 0;padding:0;display:grid;gap:12px}
+.spring-report{padding:12px 0;border-top:1px solid #d2ded7}
+.spring-report-date{display:block;font:700 .74rem var(--ff-ui);text-transform:uppercase;letter-spacing:.05em;color:#455f68;margin-bottom:4px}
+.spring-report a,#spring-official-report{font:700 .94rem var(--ff-ui);text-decoration:underline}
+.spring-report p{margin-top:5px}
