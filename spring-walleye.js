@@ -49,7 +49,7 @@
     reportList.replaceChildren();
     for (const report of selected.reports || []) {
       const item = el("li", "spring-report");
-      const date = el("span", "spring-report-date", report.issuedAt + " | " + report.status.replaceAll("-", " "));
+      const date = el("span", "spring-report-date", (report.issuedAt || "Undated guidance") + " | " + report.status.replaceAll("-", " "));
       const link = el("a", "", report.label);
       link.href = report.url;
       link.target = "_blank";
@@ -63,7 +63,7 @@
     }
     reportContext.textContent = selected.statusNote;
     authority.href = selected.reportsUrl;
-    authority.textContent = "Check " + selected.authority + " fishery reports";
+    authority.textContent = selected.sourceActionLabel || ("Check " + selected.authority + " fishery reports");
     updated.textContent = "Station fetch " + observedAt(latest.generatedAt) + ". Water readings do not verify fish presence, spawning, access, or fishing regulations.";
   }
   function render(data) {
