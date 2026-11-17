@@ -1,9 +1,13 @@
 "use strict";
 
 // Environmental screening only. No input here confirms that walleye are present.
+const { regionSummaries } = require("./spring-walleye-evidence");
 const STATIONS = Object.freeze([
   { id: "04157005", name: "Saginaw River at Saginaw", river: "Saginaw River" },
   { id: "04156000", name: "Tittabawassee River at Midland", river: "Tittabawassee River" },
+  { id: "04165710", name: "Detroit River at Fort Wayne", river: "Detroit River" },
+  { id: "04193500", name: "Maumee River at Waterville", river: "Maumee River" },
+  { id: "04198000", name: "Sandusky River near Fremont", river: "Sandusky River" },
 ]);
 const CURRENT_MS = 6 * 3600000;
 function numeric(value, low, high) {
@@ -71,7 +75,8 @@ function assemble(samples, now = Date.now()) {
         "Current river temperatures are unavailable",
     fishPresence: "unverified",
     stations,
-    interpretation: "This tool reports measured conditions only. It does not forecast, confirm, or locate a walleye spawning run.",
+    regions: regionSummaries(stations, time),
+    interpretation: "This tool reports measured conditions and dated historical fisheries references. It does not forecast, confirm, or locate a walleye spawning run.",
     nextSteps: [
       {label: "Check current Michigan fishing regulations", url: "https://www.michigan.gov/dnr/things-to-do/fishing/regulations"},
       {label: "Check Michigan DNR fishing reports", url: "https://www.michigan.gov/dnr/things-to-do/fishing/weekly"},
