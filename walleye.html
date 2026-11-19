@@ -13,6 +13,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/styles.css">
+  <script src="/spring-walleye.js" defer></script>
 </head>
 <body>
   <nav class="site-nav">
@@ -40,6 +41,33 @@
 
   <main>
     <div class="content-wrap">
+
+      <section class="section-block spring-run" id="spring-run" aria-labelledby="spring-run-title">
+        <div class="spring-run-top">
+          <div>
+            <p class="spring-eyebrow">SPRING WALLEYE WATER WATCH | GREAT LAKES RIVERS</p>
+            <h2 id="spring-run-title">Is the river warming for spring walleye?</h2>
+            <p class="spring-intro">Compare official river readings for the Saginaw, Tittabawassee, Detroit, Maumee and Sandusky rivers. Dated fishery sources appear separately. Neither temperature nor flow confirms fish presence.</p>
+          </div>
+          <button class="spring-refresh" id="spring-run-refresh" type="button">Check again</button>
+        </div>
+        <label for="spring-region-select" class="spring-region-label">Choose a spring fishing river</label>
+        <select id="spring-region-select" class="spring-region-select" aria-label="Choose river corridor"><option value="saginaw">Saginaw River system</option></select>
+        <p id="spring-run-status" class="spring-status" role="status" aria-live="polite">Reading USGS stations...</p>
+        <div class="spring-station-grid" id="spring-run-stations" aria-live="polite"></div>
+        <p id="spring-run-updated" class="spring-note">Station data is measured by USGS and can be missing during seasonal outages.</p>
+        <section class="spring-evidence" aria-labelledby="spring-evidence-title">
+          <h3 id="spring-evidence-title">What has fisheries staff actually reported?</h3>
+          <p id="spring-evidence-status" class="spring-note">Reports are dated and may be from a previous season.</p>
+          <ul id="spring-reports"></ul>
+          <a id="spring-official-report" href="https://www.michigan.gov/dnr/things-to-do/fishing/weekly" target="_blank" rel="noopener noreferrer">Check official current fishery reports</a>
+        </section>
+        <div class="spring-next">
+          <strong>Before you fish</strong>
+          <p>Check <a href="https://www.michigan.gov/dnr/things-to-do/fishing/regulations" target="_blank" rel="noopener noreferrer">Michigan fishing regulations</a> and the <a href="https://www.michigan.gov/dnr/things-to-do/fishing/weekly" target="_blank" rel="noopener noreferrer">DNR fishing report</a>. Do not treat weather or temperature alone as a verified run report. Read the <a href="https://waterdata.usgs.gov/monitoring-location/04157005/" target="_blank" rel="noopener noreferrer">Saginaw River gauge</a> and <a href="https://waterdata.usgs.gov/monitoring-location/04156000/" target="_blank" rel="noopener noreferrer">Tittabawassee River gauge</a> directly if the live display fails.</p>
+        </div>
+      </section>
+
       <section class="section-block seo-prose">
         <h2>Saginaw Bay Walleye: Season Overview</h2>
         <p>Saginaw Bay supports one of Michigan's strongest walleye populations. The fishery benefits from tributary spawning runs up the Saginaw, Tittabawassee, and Rifle Rivers, with post-spawn fish filtering into the bay system from late April through June. The spring trolling bite is the marquee fishery, drawing boats from across the state.</p>
